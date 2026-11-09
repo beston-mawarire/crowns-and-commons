@@ -6,7 +6,7 @@ import { DurableObject } from "cloudflare:workers";
 import { byToken, createRoom, handle, join, nextAlarm, onAlarm, setConnected, view, welcome, type Store } from "./game/game";
 import type { Room } from "./game/game";
 import type { Timeline } from "./game/sim";
-import type { Env } from "./worker";
+import { versionOf, type Env } from "./worker";
 
 interface Attachment {
   pid?: string;
@@ -91,7 +91,7 @@ export class GameRoom extends DurableObject<Env> {
       ws.serializeAttachment({ pid: player.id } satisfies Attachment);
       setConnected(store.room, player.id, true);
       store.room.touchedAt = now;
-      ws.send(JSON.stringify(welcome(player)));
+      ws.send(JSON.stringify({ ...welcome(player), version: versionOf(this.env) }));
       return this.commit(store);
     }
 

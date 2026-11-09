@@ -8,7 +8,11 @@ export { GameRoom };
 export interface Env {
   ROOMS: DurableObjectNamespace<GameRoom>;
   ASSETS: Fetcher;
+  CF_VERSION_METADATA?: { id: string; tag: string; timestamp: string };
 }
+
+/** Changes with every deployment. Browsers compare it with the one they loaded and reload if it moved on. */
+export const versionOf = (env: Env) => env.CF_VERSION_METADATA?.id || "dev";
 
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O or 1/I, so codes survive being read aloud
 const CODE = /^[A-HJ-NP-Z2-9]{5}$/;
@@ -21,6 +25,8 @@ function newCode(): string {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/version") return Response.json({ version: versionOf(env) }, { headers: { "Cache-Control": "no-store" } });
 
     if (url.pathname === "/api/rooms" && request.method === "POST") {
       for (let attempt = 0; attempt < 5; attempt++) {

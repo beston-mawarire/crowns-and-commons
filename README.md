@@ -39,6 +39,11 @@ The game runs on Cloudflare Workers with one Durable Object per room, which fits
 Until those are set the deploy step is skipped and only the tests run. The first deploy creates
 the `GameRoom` Durable Object from the migration in `wrangler.jsonc`.
 
+Open pages keep themselves up to date. When a new version is deployed, every open page
+notices (on reconnecting, when it comes back to the front, and every two minutes) and reloads
+itself; matches carry on, because the state lives in the room and each seat is remembered.
+Pages also reconnect on their own after a phone sleeps or the network drops.
+
 ## How it is put together
 
 ```

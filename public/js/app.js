@@ -33,6 +33,10 @@ const S = {
   lastPhase: null,
   rightKey: "",
   modal: null,
+  version: null, // the deployment this page was loaded from
+  lastSeen: 0, // when the server last said anything
+  retryTimer: null,
+  updating: false,
 };
 
 const now = () => Date.now() + S.offset;
@@ -83,6 +87,62 @@ function boot() {
   };
   document.addEventListener("keydown", (e) => e.key === "Escape" && closeModal());
   setInterval(tick, 250);
+
+  // Keep the page fresh without anyone pressing reload: notice new versions, and recover
+  // quickly when a phone wakes up or the network comes back.
+  checkVersion();
+  setInterval(checkVersion, 120000);
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && wake());
+  window.addEventListener("online", wake);
+  window.addEventListener("pageshow", (e) => e.persisted && wake());
+}
+
+/** Ask which version is live. If it is newer than this page, reload to get it. */
+async function checkVersion() {
+  try {
+    const res = await fetch("/api/version", { cache: "no-store" });
+    if (res.ok) sawVersion((await res.json()).version);
+  } catch {
+    // Offline or mid-deploy: the next check will catch it.
+  }
+}
+
+function sawVersion(version) {
+  if (!version || S.updating) return;
+  if (!S.version) S.version = version;
+  else if (version !== S.version) {
+    S.updating = true;
+    toast("The game has been updated. Reloading…", 5000);
+    // Nothing is lost: the match lives on the server and your seat is remembered.
+    if (S.st?.phase === "planning" && S.draft && !S.st.you.locked && !S.st.you.eliminated) send({ type: "draft", platform: S.draft });
+    setTimeout(() => location.reload(), 1200);
+  }
+}
+
+/** The page has come back to the front or the network has returned: make sure we are still connected. */
+function wake() {
+  checkVersion();
+  if (!S.code || S.dead) return;
+  if (!S.ws || S.ws.readyState > 1) return connect();
+  if (S.ws.readyState !== 1) return;
+  const asked = Date.now();
+  S.ws.send("ping");
+  setTimeout(() => S.lastSeen < asked && reconnect(), 4000);
+}
+
+/** Drop a connection that has gone quiet and start a new one. */
+function reconnect() {
+  if (S.dead) return;
+  if (S.ws) {
+    S.ws.onclose = null;
+    try {
+      S.ws.close();
+    } catch {
+      // already gone
+    }
+  }
+  $("#lost").hidden = false;
+  connect();
 }
 
 function showHome(message) {
@@ -92,18 +152,23 @@ function showHome(message) {
 }
 
 function connect() {
+  clearTimeout(S.retryTimer);
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${proto}//${location.host}/ws/${S.code}`);
   S.ws = ws;
   ws.onopen = () => {
     S.retry = 0;
+    S.lastSeen = Date.now();
     $("#lost").hidden = true;
     send({ type: "hello", token: store.get("cc:token:" + S.code), name: store.get("cc:name") });
   };
   ws.onmessage = (e) => {
+    if (ws !== S.ws) return; // a connection we have already replaced
+    S.lastSeen = Date.now();
     if (e.data === "pong") return;
     const msg = JSON.parse(e.data);
     if (msg.type === "welcome") {
+      sawVersion(msg.version);
       S.info = msg;
       store.set("cc:token:" + S.code, msg.you.token);
     } else if (msg.type === "state") {
@@ -120,12 +185,17 @@ function connect() {
     }
   };
   ws.onclose = () => {
-    if (S.dead) return;
+    if (S.dead || ws !== S.ws) return;
     $("#lost").hidden = false;
-    setTimeout(connect, Math.min(8000, 500 * 2 ** S.retry++));
+    S.retryTimer = setTimeout(connect, Math.min(8000, 500 * 2 ** S.retry++));
   };
 }
-setInterval(() => S.ws && S.ws.readyState === 1 && S.ws.send("ping"), 25000);
+// Heartbeat: a ping every 25 seconds, and a fresh connection if the server has been silent for a minute.
+setInterval(() => {
+  if (!S.ws || S.ws.readyState !== 1) return;
+  if (Date.now() - S.lastSeen > 60000) reconnect();
+  else S.ws.send("ping");
+}, 25000);
 
 let toastTimer;
 function toast(text, ms = 3500) {

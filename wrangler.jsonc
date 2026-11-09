@@ -9,6 +9,8 @@
     // Only these paths reach the Worker; everything else is served as a static file.
     "run_worker_first": ["/api/*", "/ws/*"]
   },
+  // Lets the code read which deployed version it is, so open pages can reload after an update.
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "durable_objects": {
     "bindings": [{ "name": "ROOMS", "class_name": "GameRoom" }]
   },
