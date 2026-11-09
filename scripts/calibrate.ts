@@ -2,9 +2,10 @@
 // Usage: npm run calibrate            (report with the current constants)
 //        npm run calibrate -- --tune  (also search for the q0 that hits the target)
 //
-// Target: a "sensible" campaign (a thoughtful newcomer with an imperfect read of the region)
-// should clear 50% a little more than half the time, an expert nearly always, and a
-// careless platform only now and then.
+// It reports how often different kinds of platform reach the qualifying share
+// (RULES.qualifyShare). The Old Order's pull, q0, was originally tuned for a 50% bar;
+// with the bar at 30% nearly every platform qualifies. Use --tune to find the q0 at which
+// a "sensible" campaign (a thoughtful newcomer) qualifies 55% of the time at the current bar.
 
 import { CATEGORIES, G, MODEL, RULES } from "../src/game/data";
 import { lawsOf } from "../src/game/laws";

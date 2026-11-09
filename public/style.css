@@ -104,8 +104,11 @@ select { padding: 5px 4px; }
 .key { width: 14px; height: 14px; border: 1.5px solid var(--ink); display: inline-block; }
 .key.old { background: repeating-linear-gradient(45deg, var(--ink) 0 1.5px, var(--paper) 1.5px 5px); }
 #mapactions { display: flex; justify-content: center; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
-#newslog { list-style: none; padding: 0; margin: 14px auto 0; max-width: 780px; font-size: 13.5px; color: var(--mid); }
-#newslog li { padding: 4px 0; border-top: 1px dotted var(--faint); display: flex; gap: 8px; align-items: baseline; }
+#newsbox { max-width: 780px; margin: 16px auto 0; }
+#newsbox h3 span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+#newslog { list-style: none; padding: 0 8px 0 0; margin: 0; font-size: 13.5px; color: #444; max-height: 230px; overflow-y: auto; overscroll-behavior: contain; border-bottom: 1px solid var(--ink); }
+#newslog li { padding: 5px 0; border-top: 1px dotted var(--faint); display: flex; gap: 8px; align-items: baseline; }
+#newslog li:first-child { border-top: 0; color: var(--ink); }
 #newslog .dot { width: 8px; height: 8px; }
 
 /* right-hand panel */
@@ -113,7 +116,7 @@ select { padding: 5px 4px; }
 .greyed { opacity: 0.55; pointer-events: none; filter: grayscale(1); }
 .purse { display: flex; justify-content: space-between; align-items: baseline; border: 2px solid var(--ink); padding: 6px 10px; margin: 10px 0; }
 .purse b { font: 700 20px var(--sans); }
-.mix { display: grid; grid-template-columns: 84px 1fr 34px 70px; gap: 3px 8px; align-items: center; font-size: 13px; }
+.mix { display: grid; grid-template-columns: 92px 1fr 34px 74px; gap: 3px 8px; align-items: center; font-size: 13px; }
 .bar { height: 9px; background: var(--wash); border: 1px solid var(--ink); }
 .bar i { display: block; height: 100%; background: var(--ink); }
 .realm { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 4px; }
@@ -171,7 +174,7 @@ details.cat.done > summary .count { background: var(--ink); color: var(--paper);
 .card h4 { font-size: 17px; display: flex; align-items: center; gap: 8px; }
 .card .share { font: 700 30px var(--sans); margin: 4px 0 0; }
 .card .verdict { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
-.gbar { display: grid; grid-template-columns: 78px 1fr 38px; gap: 8px; align-items: center; font-size: 13px; margin: 3px 0; }
+.gbar { display: grid; grid-template-columns: 92px 1fr 38px; gap: 8px; align-items: center; font-size: 13px; margin: 3px 0; }
 .gbar .track { height: 13px; border: 1px solid var(--ink); background: var(--paper); }
 .gbar .track i { display: block; height: 100%; }
 .gbar .track i.old { background: repeating-linear-gradient(45deg, var(--ink) 0 1.5px, var(--paper) 1.5px 5px); }

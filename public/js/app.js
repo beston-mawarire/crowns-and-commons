@@ -42,6 +42,8 @@ const player = (id) => S.st.players.find((p) => p.id === id);
 const me = () => player(S.st.you.id);
 const law = (id) => S.info.catalogue.find((l) => l.id === id);
 const tier = () => (S.st.round === 1 ? "R" : "N");
+/** Votes needed in your own region to reach round two, as a whole percentage. */
+const need = () => Math.round(S.info.rules.qualifyShare * 100) + "%";
 
 // ------------------------------------------------------------------ boot
 
@@ -165,8 +167,8 @@ const spent = () => S.slots.reduce((a, s) => a + (S.info.actions.find((x) => x.i
 /** Why a law cannot be ticked right now, or "" if it can. */
 function blocked(l) {
   const mine = lawsIn(l.cat).map(law);
-  if (mine.length >= S.info.rules.maxLawsPerCategory) return "Three laws at most in each field.";
-  if (mine.some((m) => Math.abs(m.pos - l.pos) > S.info.rules.maxSpread)) return "Contradicts a law you have already chosen here.";
+  if (mine.length >= S.info.rules.maxLawsPerCategory) return "You can pick at most three laws in each area.";
+  if (mine.some((m) => Math.abs(m.pos - l.pos) > S.info.rules.maxSpread)) return "This clashes with a law you already picked here.";
   return "";
 }
 
@@ -184,7 +186,7 @@ function render() {
   syncDraft();
 
   if (S.lastPhase !== st.phase) {
-    if (st.phase === "counting") flash(st.round === 1 ? "The polls are now open" : "The realm goes to the polls", "Citizens are beginning to cast their votes.");
+    if (st.phase === "counting") flash(st.round === 1 ? "Voting begins" : "The whole country votes", "People are heading out to vote.");
     if (st.phase === "planning" || st.phase === "lobby") {
       S.shown.clear();
       S.log = [];
@@ -206,7 +208,7 @@ function render() {
   if (S.modal) drawResults();
 }
 
-const ROUND_NAME = { 1: "Round 1 · Regional election", 2: "Round 2 · Nationwide election" };
+const ROUND_NAME = { 1: "Round 1 · Regional election", 2: "Round 2 · National election" };
 
 function renderTop() {
   const st = S.st;
@@ -216,7 +218,7 @@ function renderTop() {
     planning: `${ROUND_NAME[st.round]}${again} · choose your laws`,
     counting: `${ROUND_NAME[st.round]} · the votes are coming in`,
     results: `${ROUND_NAME[st.round]} · the result`,
-    final: "The match is decided",
+    final: "The game is over",
   }[st.phase];
   $("#phase").textContent = label;
   $("#invite").textContent = `Room ${st.code} · copy link`;
@@ -228,9 +230,9 @@ function statusOf(p) {
   if (st.phase === "lobby") return "ready";
   if (p.eliminated) return "watching";
   if (st.phase === "planning") return p.locked ? "locked in" : "deciding…";
-  if (st.phase === "counting") return "awaiting the count";
+  if (st.phase === "counting") return "waiting for results";
   if (st.outcome?.winner === p.id) return "winner";
-  if (st.phase === "results" && st.round === 1) return p.qualified ? "qualified" : "fell short";
+  if (st.phase === "results" && st.round === 1) return p.qualified ? "qualified" : "did not qualify";
   return "";
 }
 
@@ -250,11 +252,11 @@ function renderLeft() {
   }
   html += `<div class="stack">`;
   if (st.phase === "lobby" && host) html += `<button class="btn ghost" data-act="addBot" ${st.players.length >= S.info.rules.maxPlayers ? "disabled" : ""}>Add a bot party</button>`;
-  if (st.phase === "planning" && host) html += `<button class="btn ghost small" data-act="forceLock" title="Lock everyone in now; a clerk fills any gaps">Call time on planning</button>`;
+  if (st.phase === "planning" && host) html += `<button class="btn ghost small" data-act="forceLock" title="Lock everyone in now. Any missing laws are filled in automatically.">End planning now</button>`;
   if ((st.phase === "final" || st.phase === "results") && host) html += `<button class="btn ghost small" data-act="newGame">Back to the lobby</button>`;
   html += `</div>`;
   if (st.phase !== "lobby") {
-    html += `<h3>How to read the map</h3><p class="small muted">Each region fills with a party's colour as its votes are counted. Hatching is the Old Order: people who would rather keep the old council. In round one you need half the votes in your own region.</p>`;
+    html += `<h3>How to read the map</h3><p class="small muted">Each region fills with a party's colour as its votes are counted. Striped areas are votes for the Old Order: people who would rather keep things as they are. In round one you need ${need()} of the votes in your own region.</p>`;
   }
   const el = $("#left");
   el.innerHTML = html;
@@ -271,18 +273,18 @@ function renderCentre() {
     return list.length > 1 ? list.slice(0, -1).join(", ") + " and " + list.at(-1) : list[0];
   };
   let banner = "";
-  if (st.phase === "lobby") banner = `<h2>Gathering the parties</h2><p>Send friends the link (top right). A match needs two to five parties, and the map is cut into one region each.</p>`;
-  else if (st.phase === "planning" && st.you.eliminated) banner = `<h2>The whole realm is in play</h2><p>The qualifiers are writing their nationwide laws.</p>`;
-  else if (st.phase === "planning" && st.round === 1) banner = `<h2>You stand in ${esc(st.regions[st.you.home].name)}</h2><p>${esc(st.regions[st.you.home].blurb)}. Win half its votes to go forward.</p>`;
-  else if (st.phase === "planning") banner = `<h2>The whole realm is in play</h2><p>Your regional laws stand. Add nationwide laws and campaign anywhere.</p>`;
-  else if (st.phase === "counting") banner = `<h2>The count</h2><p>Watch the news. The numbers come at the end.</p>`;
-  else if (st.outcome?.kind === "none") banner = `<h2>No one carried their region</h2><p>No party reached half the vote, so the regional election will be held again. The old council's grip is weakening.</p>`;
+  if (st.phase === "lobby") banner = `<h2>Waiting for players</h2><p>Send your friends the link (top right). A game needs two to five parties, and the map is split into one region for each.</p>`;
+  else if (st.phase === "planning" && st.you.eliminated) banner = `<h2>The national election</h2><p>The remaining parties are choosing their national laws.</p>`;
+  else if (st.phase === "planning" && st.round === 1) banner = `<h2>Your region: ${esc(st.regions[st.you.home].name)}</h2><p>${esc(st.regions[st.you.home].blurb)}. Win ${need()} of its votes to reach the national election.</p>`;
+  else if (st.phase === "planning") banner = `<h2>Now it's the whole country</h2><p>Your regional laws stay. Add national laws and campaign in any region.</p>`;
+  else if (st.phase === "counting") banner = `<h2>Counting the votes</h2><p>Watch the news. The numbers come at the end.</p>`;
+  else if (st.outcome?.kind === "none") banner = `<h2>Nobody got enough votes</h2><p>No party reached ${need()} in its own region, so the regional election will be run again. The Old Order gets a little weaker each time.</p>`;
   else if (st.outcome?.kind === "advance") {
     const through = st.players.filter((p) => p.qualified).map((p) => p.id);
     const out = st.players.filter((p) => !p.qualified).map((p) => p.id);
-    banner = `<h2>${names(through)} go forward</h2><p>${out.length ? names(out) + (out.length > 1 ? " fall short and watch" : " falls short and watches") + " the nationwide election from the gallery." : "Every party carried its region."}</p>`;
-  } else if (st.outcome?.kind === "single") banner = `<h2>${names([st.outcome.winner])} wins the match</h2><p>The only party to carry its home region.</p>`;
-  else if (st.outcome?.kind === "national") banner = `<h2>${names([st.outcome.winner])} wins the realm</h2><p>With ${pct(st.results2.parties[st.outcome.winner].share)} of every vote cast across the continent.</p>`;
+    banner = `<h2>${names(through)} move on</h2><p>${out.length ? names(out) + " did not get enough votes and will watch the national election." : "Every party qualified for the national election."}</p>`;
+  } else if (st.outcome?.kind === "single") banner = `<h2>${names([st.outcome.winner])} wins the game</h2><p>The only party to reach ${need()} in its own region.</p>`;
+  else if (st.outcome?.kind === "national") banner = `<h2>${names([st.outcome.winner])} wins the election</h2><p>With ${pct(st.results2.parties[st.outcome.winner].share)} of all votes across the country.</p>`;
   $("#banner").innerHTML = banner;
 
   // Map: one region per party. In the lobby it previews the split.
@@ -310,9 +312,9 @@ function renderCentre() {
   $("#legend").innerHTML = legend;
 
   let actions = "";
-  if (st.phase === "counting") actions += `<button class="btn ghost small" data-act="hasten" ${st.you.hasten ? "disabled" : ""}>${st.you.hasten ? "Waiting for the others to agree…" : "Hasten the count (if everyone agrees)"}</button>`;
+  if (st.phase === "counting") actions += `<button class="btn ghost small" data-act="hasten" ${st.you.hasten ? "disabled" : ""}>${st.you.hasten ? "Waiting for the others to agree…" : "Skip to the result (everyone must agree)"}</button>`;
   if (st.results1 || st.results2) actions += `<button class="btn" id="view-results">View results</button>`;
-  if (st.phase === "results" && st.you.mayHost) actions += `<button class="btn" data-act="next">${st.outcome.kind === "none" ? "Hold the regional election again" : "Go on to the nationwide election"}</button>`;
+  if (st.phase === "results" && st.you.mayHost) actions += `<button class="btn" data-act="next">${st.outcome.kind === "none" ? "Run the regional election again" : "Continue to the national election"}</button>`;
   if (st.phase === "results" && !st.you.mayHost) actions += `<span class="hint">Waiting for the host to continue…</span>`;
   if (st.phase === "final" && st.you.mayHost) actions += `<button class="btn ghost" data-act="newGame">Play again</button>`;
   const el = $("#mapactions");
@@ -361,8 +363,9 @@ function setHeadline(h) {
   const el = $("#headline");
   if (!h) {
     el.className = "";
-    el.innerHTML = `<span class="muted">${S.st?.phase === "lobby" ? "Criers are clearing their throats." : "All quiet. The parties are still writing their promises."}</span>`;
+    el.innerHTML = `<span class="muted">${S.st?.phase === "lobby" ? "No news yet." : "No news yet. The parties are still choosing their laws."}</span>`;
     $("#newslog").innerHTML = "";
+    $("#newsbox").hidden = true;
     return;
   }
   const dot = h.p && player(h.p) ? `<i class="dot" style="background:${hex(player(h.p).color)}"></i>` : "";
@@ -370,8 +373,12 @@ function setHeadline(h) {
   el.innerHTML = dot + `<span>${esc(h.text)}</span>`;
   void el.offsetWidth;
   S.log.unshift(dot + `<span>${esc(h.text)}</span>`);
-  S.log = S.log.slice(0, 9);
-  $("#newslog").innerHTML = S.log.slice(1).map((x) => `<li>${x}</li>`).join("");
+  S.log = S.log.slice(0, 80);
+  // The full list, newest first, in a box you can scroll back through.
+  const list = $("#newslog");
+  list.innerHTML = S.log.map((x) => `<li>${x}</li>`).join("");
+  list.scrollTop = 0;
+  $("#newsbox").hidden = false;
 }
 
 // ------------------------------------------------------------------ right-hand panel
@@ -413,29 +420,29 @@ function lobbyPanel() {
   const taken = new Set(st.players.filter((p) => p.id !== mine.id).map((p) => p.color));
   const host = st.you.mayHost;
   const opt = (list, cur, fmt) => list.map((v) => `<option value="${v}" ${v === cur ? "selected" : ""}>${fmt(v)}</option>`).join("");
-  const mins = (s) => (s === 0 ? "No limit: wait for everyone" : s < 120 ? "1 minute" : s / 60 + " minutes");
+  const mins = (s) => (s === 0 ? "No limit (wait for everyone)" : s < 120 ? "1 minute" : s / 60 + " minutes");
   return `
     <h3>Your party</h3>
     <div class="field"><label for="pname">Party name</label><input id="pname" maxlength="28" value="${esc(mine.name)}" /></div>
     <div class="field"><label>Colour</label><div class="swatches">${S.info.colors
       .map((c) => `<button data-color="${c.id}" style="background:${c.hex}" aria-label="${c.id}" aria-pressed="${mine.color === c.id}" ${taken.has(c.id) ? "disabled" : ""}></button>`)
       .join("")}</div></div>
-    <h3>The match</h3>
+    <h3>Game settings</h3>
     <div class="field"><label for="plan">Time to choose laws</label><select id="plan" ${host ? "" : "disabled"}>${opt(S.info.rules.planChoices, st.settings.planSec, mins)}</select></div>
-    <div class="field"><label for="sim">Length of each count</label><select id="sim" ${host ? "" : "disabled"}>${opt(S.info.rules.simChoices, st.settings.simSec, mins)}</select></div>
+    <div class="field"><label for="sim">Length of each vote count</label><select id="sim" ${host ? "" : "disabled"}>${opt(S.info.rules.simChoices, st.settings.simSec, mins)}</select></div>
     ${
       host
-        ? `<button class="btn big wide" id="start" ${st.players.length < S.info.rules.minPlayers ? "disabled" : ""}>Start the match</button>
+        ? `<button class="btn big wide" id="start" ${st.players.length < S.info.rules.minPlayers ? "disabled" : ""}>Start the game</button>
            ${st.players.length < S.info.rules.minPlayers ? `<p class="hint">You need at least two parties. Invite a friend, or add a bot on the left.</p>` : ""}`
-        : `<p class="hint">Waiting for the host to start the match.</p>`
+        : `<p class="hint">Waiting for the host to start the game.</p>`
     }
-    <h3>How it plays</h3>
+    <h3>How to play</h3>
     <ol class="plain-list">
-      <li>Everyone is given a region at random and ${S.info.rules.startGold} gold.</li>
-      <li>Pick two or three laws in each of nine fields, set your tax rate, and choose up to three campaign actions. Then lock in.</li>
-      <li>When everyone has locked in, the votes are counted. The news tells you how people are taking it; the numbers come at the end.</li>
-      <li>Half the vote in your own region puts you through to the nationwide election, where you add new laws on top of your record and campaign across the whole map.</li>
-      <li>If only one party qualifies, it wins outright. If nobody does, the regional round is run again.</li>
+      <li>Everyone gets a random region and ${S.info.rules.startGold} gold.</li>
+      <li>Pick two or three laws in each of nine areas, set your tax rate, and choose up to three campaign actions. Then lock in.</li>
+      <li>When everyone has locked in, the votes are counted. The news tells you how people are reacting; the numbers come at the end.</li>
+      <li>Get ${need()} of the votes in your own region and you move on to the national election. There you add new laws on top of your regional ones and campaign across the whole map.</li>
+      <li>The party with the most votes in the national election wins. If only one party qualifies, it wins straight away. If nobody does, the regional round is run again.</li>
     </ol>`;
 }
 
@@ -448,7 +455,7 @@ function realmTable() {
   const st = S.st;
   const head = st.regions.map((r, i) => `<th>${esc(r.name)}${i === st.you.home ? "*" : ""}</th>`).join("");
   const rows = S.info.groups.map((g, gi) => `<tr><td>${g}</td>${st.regions.map((r) => `<td class="num">${r.mix[gi]}%</td>`).join("")}</tr>`).join("");
-  return `<h3>The realm</h3><table class="realm"><tr><th></th>${head}</tr>${rows}</table><p class="small muted">* your home region</p>`;
+  return `<h3>The country: who lives where</h3><table class="realm"><tr><th></th>${head}</tr>${rows}</table><p class="small muted">* your home region</p>`;
 }
 
 function planPanel() {
@@ -459,8 +466,8 @@ function planPanel() {
   const left = gold - spent();
   let html = st.round === 1 ? regionCard(st.regions[st.you.home], "Your region: " + st.regions[st.you.home].name) : realmTable();
 
-  html += `<h3>${st.round === 1 ? "Laws for your region" : "Laws for the whole realm"}</h3>
-    <p class="small muted">Choose ${rules.minLawsPerCategory} or ${rules.maxLawsPerCategory} in every field. You are shown what each law promises. What it costs you, you will learn from the news.</p>`;
+  html += `<h3>${st.round === 1 ? "Laws for your region" : "Laws for the whole country"}</h3>
+    <p class="small muted">Choose ${rules.minLawsPerCategory} or ${rules.maxLawsPerCategory} in every area. You can see what each law promises. Its downside is hidden: you will find out from the news.</p>`;
   for (const cat of S.info.categories) {
     const options = S.info.catalogue.filter((l) => l.tier === t && l.cat === cat.id);
     const chosen = lawsIn(cat.id);
@@ -468,7 +475,7 @@ function planPanel() {
     html += `<details class="cat ${chosen.length >= rules.minLawsPerCategory ? "done" : ""}" data-cat="${cat.id}" ${S.openCats.has(cat.id) ? "open" : ""}>
       <summary><span class="t">${esc(cat.name)}</span><span class="count">${chosen.length} of ${rules.minLawsPerCategory}–${rules.maxLawsPerCategory}</span></summary>
       <div class="axis"><span>← ${esc(cat.axis[0])}</span><span>${esc(cat.axis[1])} →</span></div>
-      ${record.length ? `<div class="record">Your regional record: ${record.map((l) => esc(l.name)).join(", ")}</div>` : ""}`;
+      ${record.length ? `<div class="record">Your regional laws here: ${record.map((l) => esc(l.name)).join(", ")}</div>` : ""}`;
     for (const l of options) {
       const on = chosen.includes(l.id);
       const why = on ? "" : blocked(l);
@@ -477,11 +484,11 @@ function planPanel() {
     html += `</details>`;
   }
 
-  html += `<h3>${st.round === 1 ? "Tax rate in your region" : "Tax rate for the realm"}</h3>
+  html += `<h3>${st.round === 1 ? "Tax rate in your region" : "Tax rate for the whole country"}</h3>
     <div class="tax"><input type="range" id="tax" min="${rules.taxMin}" max="${rules.taxMax}" step="1" value="${S.draft.tax}" aria-label="Tax rate"/><output id="taxout">${S.draft.tax}%</output></div>
-    <p class="small muted">Light taxes are popular. Promises still have to be paid for.</p>`;
+    <p class="small muted">Low taxes are popular, but laws that cost money need taxes to pay for them.</p>`;
 
-  html += `<h3>Campaign (up to ${rules.actionsPerRound} actions)</h3><div class="purse"><span>Gold in the war chest</span><b>${left}</b></div>`;
+  html += `<h3>Campaign (up to ${rules.actionsPerRound} actions)</h3><div class="purse"><span>Gold left</span><b>${left}</b></div>`;
   S.slots.forEach((slot, i) => {
     const own = S.info.actions.find((a) => a.id === slot.a)?.cost ?? 0;
     const acts = S.info.actions.map((a) => `<option value="${a.id}" ${slot.a === a.id ? "selected" : ""} ${a.cost > left + own ? "disabled" : ""}>${esc(a.name)} · ${a.cost} gold</option>`).join("");
@@ -489,11 +496,11 @@ function planPanel() {
     const regions = st.round === 2 ? `<select data-slot="${i}" data-field="r" ${slot.a ? "" : "disabled"} aria-label="Region">${st.regions.map((r, ri) => `<option value="${ri}" ${slot.r === ri ? "selected" : ""}>in ${esc(r.name)}</option>`).join("")}</select>` : "";
     html += `<div class="slot ${st.round === 2 ? "three" : ""}"><select data-slot="${i}" data-field="a" aria-label="Campaign action ${i + 1}"><option value="">No action</option>${acts}</select><select data-slot="${i}" data-field="g" ${slot.a ? "" : "disabled"} aria-label="Audience">${groups}</select>${regions}</div>`;
   });
-  html += `<p class="small muted">Each action speaks to one audience. Repeating yourself works less well each time. Unspent gold carries over, and there are no loans.</p>`;
+  html += `<p class="small muted">Each action targets one group. Repeating the same action works less well each time. Gold you don't spend carries over to the next round, and you can't borrow.</p>`;
 
   const miss = missing();
   html += `<button class="btn big wide" id="lock" ${miss.length ? "disabled" : ""}>Lock in</button>`;
-  html += miss.length ? `<p class="hint">Still needs two laws: ${miss.map(esc).join(", ")}.</p>` : `<p class="hint">Once every party has locked in, the polls open.</p>`;
+  html += miss.length ? `<p class="hint">You still need two laws in: ${miss.map(esc).join(", ")}.</p>` : `<p class="hint">When every party has locked in, voting begins.</p>`;
   return html;
 }
 
@@ -523,14 +530,14 @@ function lockedPanel(canUnlock) {
   const current = canUnlock ? S.draft : st.round === 1 ? me().regional : me().national;
   return `
     <div class="locked-note">
-      <b>${canUnlock ? "Locked in." : "The polls are open."}</b>
-      ${canUnlock ? ` Waiting for ${waiting} more ${waiting === 1 ? "party" : "parties"}.` : " Your decisions are made. Watch the map and the news."}
+      <b>${canUnlock ? "Locked in." : "Voting has started."}</b>
+      ${canUnlock ? ` Waiting for ${waiting} more ${waiting === 1 ? "party" : "parties"}.` : " Your choices are final. Watch the map and the news."}
       ${canUnlock ? `<div class="stack"><button class="btn ghost small" id="unlock">Change my mind</button></div>` : ""}
     </div>
     <div class="greyed">
-      <div class="purse"><span>Gold in the war chest</span><b>${canUnlock ? st.you.gold - spent() : st.you.gold}</b></div>
-      ${st.round === 2 ? `<h3>Your nationwide platform</h3><ul class="plain-list">${platformSummary(current)}</ul>` : ""}
-      <h3>Your regional ${st.round === 2 ? "record" : "platform"}</h3><ul class="plain-list">${platformSummary(st.round === 2 ? me().regional : current)}</ul>
+      <div class="purse"><span>Gold left</span><b>${canUnlock ? st.you.gold - spent() : st.you.gold}</b></div>
+      ${st.round === 2 ? `<h3>Your national laws</h3><ul class="plain-list">${platformSummary(current)}</ul>` : ""}
+      <h3>Your regional laws</h3><ul class="plain-list">${platformSummary(st.round === 2 ? me().regional : current)}</ul>
     </div>`;
 }
 
@@ -539,7 +546,7 @@ function galleryPanel() {
   const r = st.regions[st.you.home];
   const share = st.results1?.parties[st.you.id]?.share;
   return `
-    <div class="locked-note"><b>You are in the gallery.</b> ${share !== undefined ? `Your party took ${pct(share)} of the vote in ${esc(r.name)}, short of the half it needed.` : ""} You can watch the nationwide election, the map and the news, but you cannot act.</div>
+    <div class="locked-note"><b>You are out of the running.</b> ${share !== undefined ? `Your party got ${pct(share)} of the votes in ${esc(r.name)} and needed ${need()}.` : ""} You can still watch the national election, the map and the news.</div>
     ${realmTable()}`;
 }
 
@@ -547,21 +554,21 @@ function standingsPanel() {
   const st = S.st;
   const res = st.results2 ?? st.results1;
   const order = st.outcome?.ranking ?? [];
-  let html = `<h3>${st.results2 ? "Nationwide standings" : "Regional standings"}</h3>`;
+  let html = `<h3>${st.results2 ? "National results" : "Regional results"}</h3>`;
   order.forEach((id, i) => {
     const p = player(id);
     const tag = st.outcome.winner === id ? `<span class="tag solid">winner</span>` : !st.results2 && p.qualified ? `<span class="tag">qualified</span>` : "";
-    html += `<div class="standing"><span class="num">${i + 1}.</span><span class="key" style="background:${hex(p.color)}"></span><span><b>${esc(p.name)}</b>${tag}<br><span class="small muted">${st.results2 ? "of all votes cast" : "in " + esc(st.regions[p.home].name)}</span></span><span class="pct">${pct(res.parties[id].share)}</span></div>`;
+    html += `<div class="standing"><span class="num">${i + 1}.</span><span class="key" style="background:${hex(p.color)}"></span><span><b>${esc(p.name)}</b>${tag}<br><span class="small muted">${st.results2 ? "of all votes" : "in " + esc(st.regions[p.home].name)}</span></span><span class="pct">${pct(res.parties[id].share)}</span></div>`;
   });
-  if (st.results2) html += `<div class="standing"><span></span><span class="key old"></span><span><b>The Old Order</b><br><span class="small muted">would rather none of you</span></span><span class="pct">${pct(res.old.share)}</span></div>`;
+  if (st.results2) html += `<div class="standing"><span></span><span class="key old"></span><span><b>The Old Order</b><br><span class="small muted">wanted to keep things as they are</span></span><span class="pct">${pct(res.old.share)}</span></div>`;
   if (st.results2) {
     const gone = st.players.filter((p) => p.eliminated);
-    if (gone.length) html += `<p class="small muted" style="margin-top:8px">Fell at the regional round: ${gone.map((p) => esc(p.name)).join(", ")}.</p>`;
+    if (gone.length) html += `<p class="small muted" style="margin-top:8px">Knocked out in the regional round: ${gone.map((p) => esc(p.name)).join(", ")}.</p>`;
   }
-  if (res.event) html += `<p class="small" style="margin-top:10px"><b>This election's upset:</b> ${esc(res.event.name.toLowerCase())}${res.event.region !== null ? " in " + esc(st.regions[res.event.region].name) : " across the realm"}.</p>`;
+  if (res.event) html += `<p class="small" style="margin-top:10px"><b>Surprise event this election:</b> ${esc(res.event.name.toLowerCase())}${res.event.region !== null ? " in " + esc(st.regions[res.event.region].name) : " across the country"}.</p>`;
 
   if (st.phase === "final" && st.report) {
-    html += `<h3>What the people made of the laws</h3><p class="small muted">Now that it is over, the costs each law carried are on the record.</p>`;
+    html += `<h3>How people felt about the laws</h3><p class="small muted">Now that the game is over, here is the hidden downside of each party's least popular laws.</p>`;
     for (const id of order) {
       const rep = st.report[id];
       if (!rep) continue;
@@ -571,7 +578,7 @@ function standingsPanel() {
         <div class="verdicts"><div><h5>Most popular</h5><ul>${rep.best.map((l) => li(l, false)).join("")}</ul></div><div><h5>Least popular</h5><ul>${rep.worst.map((l) => li(l, true)).join("")}</ul></div></div></div>`;
     }
   } else if (st.phase === "results") {
-    html += `<p class="hint" style="margin-top:12px">${st.outcome.kind === "none" ? "Everyone keeps their laws as a starting point, gains " + S.info.rules.roundIncome + " gold, and tries again." : "Qualifiers gain " + S.info.rules.roundIncome + " gold for the nationwide campaign. Press View results to study who backed whom."}</p>`;
+    html += `<p class="hint" style="margin-top:12px">${st.outcome.kind === "none" ? "Everyone keeps their laws as a starting point, gains " + S.info.rules.roundIncome + " gold, and tries again." : "Parties that qualified get " + S.info.rules.roundIncome + " more gold for the national campaign. Press View results to see which groups voted for whom."}</p>`;
   }
   return html;
 }
@@ -673,35 +680,35 @@ function drawResults() {
       })
       .join("");
     body += `<table class="grid"><tr><th>Region</th>${head}<th>Old Order</th><th>Turnout</th></tr>${rows}
-      <tr><th>The realm</th>${ids.map((id) => `<th class="num">${pct(res.parties[id].share)}</th>`).join("")}<th class="num">${pct(res.old.share)}</th><th></th></tr></table>`;
+      <tr><th>Whole country</th>${ids.map((id) => `<th class="num">${pct(res.parties[id].share)}</th>`).join("")}<th class="num">${pct(res.old.share)}</th><th></th></tr></table>`;
   }
 
-  body += `<p class="small muted">Bars show the share of each group's votes that went to the party${round === 1 ? " in its own region" : " across the realm"}.</p><div class="cards">`;
+  body += `<p class="small muted">Each bar shows what share of that group's votes the party got${round === 1 ? " in its own region" : " across the country"}.</p><div class="cards">`;
   for (const id of ids) {
     const p = player(id);
     const pr = res.parties[id];
     const region = res.regions[p.home];
     const verdict =
       round === 1
-        ? `${pr.share >= S.info.rules.qualifyShare ? "Qualified" : "Fell short"} · ${esc(st.regions[p.home].name)} · turnout ${pct(region.turnout)}`
+        ? `${pr.share >= S.info.rules.qualifyShare ? "Qualified" : "Did not qualify"} · ${esc(st.regions[p.home].name)} · turnout ${pct(region.turnout)}`
         : st.outcome?.winner === id
-          ? "Winner of the realm"
-          : "of all votes cast";
+          ? "Winner"
+          : "of all votes";
     const showN = round === 2 && p.national;
     body += `<div class="card"><h4><i class="key" style="background:${hex(p.color)}"></i>${esc(p.name)}${id === st.you.id ? `<span class="tag solid">you</span>` : ""}</h4>
       <div class="share">${pct(pr.share)}</div><div class="verdict">${verdict}</div>
       ${groupBars(pr.byGroup, hex(p.color))}
-      ${p.regional ? `<details><summary>Platform on the record</summary>${showN ? `<p style="margin:6px 0 0"><b>Nationwide</b></p><ul>${platformSummary(p.national)}</ul><p style="margin:6px 0 0"><b>Regional</b></p>` : ""}<ul>${platformSummary(p.regional)}</ul></details>` : ""}
+      ${p.regional ? `<details><summary>See their laws</summary>${showN ? `<p style="margin:6px 0 0"><b>National laws</b></p><ul>${platformSummary(p.national)}</ul><p style="margin:6px 0 0"><b>Regional laws</b></p>` : ""}<ul>${platformSummary(p.regional)}</ul></details>` : ""}
     </div>`;
   }
-  if (round === 2) body += `<div class="card"><h4><i class="key old"></i>The Old Order</h4><div class="share">${pct(res.old.share)}</div><div class="verdict">kept faith with the old council</div>${groupBars(res.old.byGroup, "", "old")}</div>`;
+  if (round === 2) body += `<div class="card"><h4><i class="key old"></i>The Old Order</h4><div class="share">${pct(res.old.share)}</div><div class="verdict">wanted to keep things as they are</div>${groupBars(res.old.byGroup, "", "old")}</div>`;
   body += `</div>`;
 
-  const tabs = st.results1 && st.results2 ? `<div class="tabs"><button class="btn ghost small" data-tab="1" aria-selected="${round === 1}">Round 1 · Regional</button><button class="btn ghost small" data-tab="2" aria-selected="${round === 2}">Round 2 · Nationwide</button></div>` : "";
+  const tabs = st.results1 && st.results2 ? `<div class="tabs"><button class="btn ghost small" data-tab="1" aria-selected="${round === 1}">Round 1 · Regional</button><button class="btn ghost small" data-tab="2" aria-selected="${round === 2}">Round 2 · National</button></div>` : "";
   const modal = $("#modal");
   const keep = modal.querySelector(".sheet")?.scrollTop ?? 0;
   const open = [...modal.querySelectorAll(".card details")].map((d) => d.open);
-  modal.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Election results"><div class="sheet-head"><h2>${round === 1 ? "Regional election results" : "Nationwide election results"}</h2><button class="btn ghost small" id="close-modal">Close</button></div>${tabs}${body}</div>`;
+  modal.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Election results"><div class="sheet-head"><h2>${round === 1 ? "Regional election results" : "National election results"}</h2><button class="btn ghost small" id="close-modal">Close</button></div>${tabs}${body}</div>`;
   modal.hidden = false;
   modal.querySelector(".sheet").scrollTop = keep;
   modal.querySelectorAll(".card details").forEach((d, i) => (d.open = !!open[i]));

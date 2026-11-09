@@ -1,7 +1,10 @@
 // Static game data other than the legislation catalogue.
 // Everything in here that is marked "hidden" must never be sent to a browser.
 
-export const GROUPS = ["Commoners", "Merchants", "Artisans", "Clergy", "Military", "Nobility"] as const;
+// Display names. The two-letter keys below are the internal codes used in the law tables:
+// Co = commoners, Me = traders (merchants), Ar = craft workers (artisans),
+// Cl = the church (clergy), Mi = soldiers (military), No = nobles.
+export const GROUPS = ["Commoners", "Traders", "Craft workers", "Church", "Soldiers", "Nobles"] as const;
 export const GROUP_KEYS = ["Co", "Me", "Ar", "Cl", "Mi", "No"] as const;
 export type GroupKey = (typeof GROUP_KEYS)[number];
 export const G = 6;
@@ -10,15 +13,15 @@ export const G = 6;
 export type W = [number, number, number, number, number, number];
 
 export const CATEGORIES = [
-  { id: 1, name: "Economy & Ownership", axis: ["Held in common", "Private hands"] },
-  { id: 2, name: "Taxation & Redistribution", axis: ["The rich pay", "Everyone pays alike"] },
-  { id: 3, name: "Labour & Employment", axis: ["Workers protected", "Masters in control"] },
-  { id: 4, name: "Trade & Commerce", axis: ["Controlled", "Open"] },
-  { id: 5, name: "Welfare & Public Services", axis: ["Provided for all", "Private charity"] },
-  { id: 6, name: "Land & Agriculture", axis: ["Shared land", "Great estates"] },
-  { id: 7, name: "Government & Administration", axis: ["Ruled from above", "Self-rule"] },
-  { id: 8, name: "Law, Justice & Liberties", axis: ["Stern order", "Wide liberties"] },
-  { id: 9, name: "Religion & Institutions", axis: ["One church", "Secular realm"] },
+  { id: 1, name: "Economy & Ownership", axis: ["Shared ownership", "Private ownership"] },
+  { id: 2, name: "Taxes", axis: ["The rich pay more", "Everyone pays the same"] },
+  { id: 3, name: "Jobs & Wages", axis: ["Workers protected", "Employers in control"] },
+  { id: 4, name: "Trade & Business", axis: ["Controlled", "Open"] },
+  { id: 5, name: "Help for the Poor & Public Services", axis: ["Help for everyone", "Private charity"] },
+  { id: 6, name: "Land & Farming", axis: ["Shared land", "Big private estates"] },
+  { id: 7, name: "Government", axis: ["Ruled from the top", "People decide"] },
+  { id: 8, name: "Law, Justice & Freedoms", axis: ["Strict order", "More freedom"] },
+  { id: 9, name: "Religion", axis: ["One official church", "Church and state separate"] },
 ] as const;
 
 // ---------------------------------------------------------------- rules
@@ -36,7 +39,8 @@ export const RULES = {
   taxMin: 0,
   taxMax: 40,
   taxNeutral: 15,
-  qualifyShare: 0.5,
+  /** Share of the votes in your own region needed to reach the national election. */
+  qualifyShare: 0.3,
   simChoices: [60, 120, 180, 300],
   planChoices: [0, 180, 300, 480, 720],
   defaultSimSec: 300,
@@ -55,12 +59,12 @@ export interface ActionDef {
 
 /** Public part of the action catalogue. */
 export const ACTIONS: ActionDef[] = [
-  { id: "speech", name: "Public speech", cost: 10, desc: "Stand on a cart in the market square and say your piece." },
-  { id: "visit", name: "Visit a settlement", cost: 15, desc: "Ride out, shake hands, listen to grievances." },
-  { id: "notices", name: "Campaign notices", cost: 15, desc: "Nail your promises to every church door and guildhall." },
-  { id: "lobby", name: "Lobby wealthy lords", cost: 20, desc: "A quiet word and a good wine in the right halls." },
-  { id: "relief", name: "Distribute food and relief", cost: 25, desc: "Bread, blankets and firewood, handed out in your colours." },
-  { id: "feast", name: "Public feast", cost: 30, desc: "Roast oxen, open barrels, music until dawn." },
+  { id: "speech", name: "Public speech", cost: 10, desc: "Stand up in the market square and tell people what you will do." },
+  { id: "visit", name: "Town visit", cost: 15, desc: "Travel out, shake hands, and listen to people's problems." },
+  { id: "notices", name: "Campaign posters", cost: 15, desc: "Put your promises up on every door and wall." },
+  { id: "lobby", name: "Private dinner with the powerful", cost: 20, desc: "A quiet word and a good meal with people who have influence." },
+  { id: "relief", name: "Free food handout", cost: 25, desc: "Bread, blankets and firewood, handed out in your party's colours." },
+  { id: "feast", name: "Public feast", cost: 30, desc: "Free food, free drink and music all night." },
 ];
 
 /** HIDDEN: base strength of each action and how well it lands with each group. */
@@ -149,8 +153,8 @@ export const EVENTS: EventDef[] = [
     groups: ["Co", "Ar"],
     bonus: 0.3,
     malus: 0.15,
-    regional: ["Blight in the barley of {region}; the harvest comes in thin"],
-    national: ["A wet summer rots the grain from coast to coast"],
+    regional: ["Crop disease in {region}: the harvest is much smaller than usual"],
+    national: ["A wet summer has ruined crops across the country"],
   },
   {
     id: "trade",
@@ -160,8 +164,8 @@ export const EVENTS: EventDef[] = [
     groups: ["Me", "Ar"],
     bonus: 0.3,
     malus: 0.1,
-    regional: ["A fleet of foreign cogs crowds the quays of {capital}; trade is brisk"],
-    national: ["Fair winds and full holds: the best trading season in a generation"],
+    regional: ["Foreign ships crowd the port of {capital}; business is booming"],
+    national: ["The best trading season in years, all across the country"],
   },
   {
     id: "festival",
@@ -171,30 +175,30 @@ export const EVENTS: EventDef[] = [
     groups: ["Cl", "Co"],
     bonus: 0.3,
     malus: 0.1,
-    regional: ["Pilgrims flood into {capital} for the feast of a newly remembered saint"],
-    national: ["A year of jubilee is declared; every bell in the realm is ringing"],
+    regional: ["Crowds of pilgrims pour into {capital} for a big religious festival"],
+    national: ["A national religious festival is declared; bells are ringing everywhere"],
   },
   {
     id: "unrest",
-    name: "Border unrest",
+    name: "Trouble on the border",
     sat: [-5, -6, -4, -3, -10, -6],
     tag: "order",
     groups: ["Mi", "No"],
     bonus: 0.3,
     malus: 0.15,
-    regional: ["Raiders burn two farms on the marches of {region}"],
-    national: ["Beacons lit along the frontier; the border lords call for men"],
+    regional: ["Raiders burn two farms on the border of {region}"],
+    national: ["Fighting on the border; the border regions are calling for soldiers"],
   },
   {
     id: "epidemic",
-    name: "Epidemic",
+    name: "Disease outbreak",
     sat: [-12, -8, -8, -5, -6, -5],
     tag: "health",
     groups: ["Co", "Ar", "Me"],
     bonus: 0.35,
     malus: 0.1,
-    regional: ["The sweating sickness reaches {capital}; doors are chalked with crosses"],
-    national: ["A pestilence travels the trade roads; towns bar their gates"],
+    regional: ["A serious illness reaches {capital}; people are staying indoors"],
+    national: ["A disease is spreading along the trade roads; towns are closing their gates"],
   },
 ];
 
@@ -210,12 +214,12 @@ export const REGION_NAMES = [
 
 /** Regional characters; each region gets one at random, then a little noise. */
 export const ARCHETYPES: { kind: string; blurb: string; mix: W }[] = [
-  { kind: "farmland", blurb: "Open fields and scattered villages", mix: [40, 10, 14, 12, 10, 14] },
-  { kind: "port", blurb: "A busy harbour and counting-houses", mix: [28, 26, 18, 8, 10, 10] },
-  { kind: "guild town", blurb: "Workshops, looms and guildhalls", mix: [28, 16, 28, 9, 9, 10] },
-  { kind: "cathedral city", blurb: "Spires, cloisters and pilgrim roads", mix: [30, 12, 14, 24, 8, 12] },
-  { kind: "border march", blurb: "Castles, garrisons and watchtowers", mix: [30, 10, 14, 10, 24, 12] },
-  { kind: "old estates", blurb: "Great houses and ancient deer parks", mix: [32, 10, 12, 12, 12, 22] },
+  { kind: "farmland", blurb: "Farms and small villages", mix: [40, 10, 14, 12, 10, 14] },
+  { kind: "port", blurb: "A busy harbour full of traders", mix: [28, 26, 18, 8, 10, 10] },
+  { kind: "craft town", blurb: "Workshops and craft guilds", mix: [28, 16, 28, 9, 9, 10] },
+  { kind: "cathedral city", blurb: "A great cathedral and many churches", mix: [30, 12, 14, 24, 8, 12] },
+  { kind: "border region", blurb: "Castles and army camps", mix: [30, 10, 14, 10, 24, 12] },
+  { kind: "noble estates", blurb: "Big country houses owned by old families", mix: [32, 10, 12, 12, 12, 22] },
 ];
 
 export const COLORS = [

@@ -17,117 +17,117 @@ export interface Headline {
 }
 
 const ACTORS: string[][] = [
-  ["Ploughmen", "Washerwomen", "Cottagers", "Shepherds", "Ditch-diggers"],
-  ["Wool merchants", "Moneylenders", "Spice traders", "Shipowners", "Vintners"],
-  ["Weavers", "Masons", "Blacksmiths", "Coopers", "Tanners"],
-  ["Friars", "Parish priests", "Abbey cellarers", "Choirmasters", "Nuns of the hill convent"],
-  ["Garrison sergeants", "Veteran pikemen", "Gate wardens", "Bowmen", "Old campaigners"],
-  ["Barons", "Dowager countesses", "Landed knights", "Heirs to great houses", "Stewards of the great estates"],
+  ["Farmers", "Labourers", "Villagers", "Shepherds", "Market sellers"],
+  ["Wool traders", "Moneylenders", "Spice traders", "Ship owners", "Wine sellers"],
+  ["Weavers", "Builders", "Blacksmiths", "Carpenters", "Bakers"],
+  ["Priests", "Monks", "Nuns", "Church leaders", "Preachers"],
+  ["Soldiers", "Old soldiers", "Town guards", "Archers", "Army officers"],
+  ["Nobles", "Rich landowners", "Knights", "Old noble families", "Estate managers"],
 ];
 
 const LAW_T = {
   strongGood: [
-    "{Actor} of {place} toast the {law}; {party} is the name on every lip",
-    "'At last, someone who means it,' say {actor} in {place} of the {law}",
-    "{Actor} carry a {party} banner through {place} after word of the {law}",
-    "Bonfires in {place}: {actor} celebrate the {law}",
+    "{Actor} in {place} are celebrating the {law}; everyone is talking about {party}",
+    "'Finally, someone who means it,' say {actor} in {place} about the {law}",
+    "{Actor} march through {place} with a {party} flag after hearing about the {law}",
+    "Street parties in {place}: {actor} love the {law}",
   ],
   mildGood: [
-    "{Actor} in {place} nod along to the {law}: 'could be worse'",
-    "Cautious approval among {actor} of {place} for the {law}",
-    "{Actor} of {place} call the {law} 'a start'",
+    "{Actor} in {place} are fine with the {law}: 'could be worse'",
+    "{Actor} in {place} cautiously approve of the {law}",
+    "{Actor} in {place} call the {law} 'a good start'",
   ],
   strongBad: [
-    "{Actor} of {place} spit at the mention of the {law}",
-    "'Over our dead bodies,' say {actor} in {place} of the {law}",
-    "{Actor} in {place} bar their doors as {party} criers announce the {law}",
+    "{Actor} in {place} are furious about the {law}",
+    "'Over our dead bodies,' say {actor} in {place} about the {law}",
+    "{Actor} in {place} slam their doors when {party} announces the {law}",
     "Angry meeting of {actor} in {place}: a copy of the {law} is thrown on the fire",
   ],
   mildBad: [
-    "{Actor} of {place} grumble about the {law}",
-    "Raised eyebrows among {actor} in {place} over the {law}",
-    "{Actor} in {place} call the {law} 'not what we were hoping for'",
+    "{Actor} in {place} are grumbling about the {law}",
+    "{Actor} in {place} are not sure about the {law}",
+    "{Actor} in {place} say the {law} is 'not what we hoped for'",
   ],
   downside: [
-    "Second thoughts in {place}: {actor} are whispering about the {law}. {down}",
-    "The shine comes off the {law} in {place}, {actor} say. {down}",
-    "{Actor} of {place} have a complaint about the {law}. {down}",
+    "Second thoughts in {place}: {actor} are worried about the {law}. {down}",
+    "The {law} is losing its shine in {place}, say {actor}. {down}",
+    "{Actor} in {place} have a complaint about the {law}. {down}",
   ],
   unfunded: [
-    "Who pays for it? The {law} sits half-funded while {party}'s coffers echo",
-    "{Actor} in {place} are still waiting on the {law}; the treasury pleads poverty",
+    "Who is paying for it? The {law} is only half-funded because {party}'s taxes are too low",
+    "{Actor} in {place} are still waiting for the {law}; there is no money for it",
   ],
 };
 
 const CAMPAIGN_T: Record<string, { good: string[]; meh: string[]; bad: string[] }> = {
   speech: {
-    good: ["{party} speaks from a cart in {place}; {actor} cheer themselves hoarse"],
-    meh: ["{party} speaks in {place}; {actor} listen politely and drift away"],
-    bad: ["{party} speaks in {place}; {actor} do not look up from their business"],
+    good: ["{party} gives a speech in {place}; {actor} cheer until they lose their voices"],
+    meh: ["{party} gives a speech in {place}; {actor} listen politely and wander off"],
+    bad: ["{party} gives a speech in {place}; {actor} do not even look up"],
   },
   visit: {
-    good: ["{party} rides into {place}; {actor} line the road"],
-    meh: ["{party} visits {place}; a few {actor} turn out"],
-    bad: ["{party} visits {place}; {actor} discover urgent business elsewhere"],
+    good: ["{party} visits {place}; {actor} line the streets to say hello"],
+    meh: ["{party} visits {place}; a few {actor} show up"],
+    bad: ["{party} visits {place}; {actor} suddenly have somewhere else to be"],
   },
   notices: {
-    good: ["{party} notices on every door in {place}; {actor} read them twice"],
-    meh: ["{party} notices go up in {place}; some {actor} stop to read"],
-    bad: ["{party} notices go up in {place}; {actor} use them to light fires"],
+    good: ["{party} posters on every door in {place}; {actor} read them twice"],
+    meh: ["{party} posters go up in {place}; some {actor} stop to read"],
+    bad: ["{party} posters go up in {place}; {actor} use them to light fires"],
   },
   lobby: {
-    good: ["A {party} envoy dines with {actor} near {place}; the wine is declared excellent"],
-    meh: ["A {party} envoy calls on {actor} near {place}, who promise to think about it"],
-    bad: ["{party} sends an envoy to win over {actor} of {place}; it does not go well"],
+    good: ["{party} has dinner with {actor} near {place}; it goes very well"],
+    meh: ["{party} has dinner with {actor} near {place}, who promise to think about it"],
+    bad: ["{party} tries to win over {actor} in {place} over dinner; it does not go well"],
   },
   relief: {
-    good: ["{party} carts hand out bread in {place}; {actor} bless the name"],
-    meh: ["{party} hands out relief in {place}; {actor} take it and keep their counsel"],
-    bad: ["{party} offers relief to {actor} of {place}, who are rather insulted"],
+    good: ["{party} hands out free food in {place}; {actor} are grateful"],
+    meh: ["{party} hands out free food in {place}; {actor} take it and say nothing"],
+    bad: ["{party} offers free food to {actor} in {place}, who are insulted"],
   },
   feast: {
-    good: ["{party} feast in {place}: {actor} dance until dawn and three bards lose their voices"],
+    good: ["{party} throws a feast in {place}: {actor} dance until sunrise"],
     meh: ["{party} throws a feast in {place}; {actor} eat well and promise nothing"],
-    bad: ["{party} throws a feast in {place}; {actor} disapprove loudly from a distance"],
+    bad: ["{party} throws a feast in {place}; {actor} complain loudly from a distance"],
   },
 };
 
-const REPEAT_T = ["Another {party} {action} in {place}; {actor} say they have heard it all before"];
+const REPEAT_T = ["{party} tries the same thing again in {place}; {actor} say they have heard it all before"];
 
 const TAX_T = {
   high: [
-    "Tax collectors in {place} ask for an armed escort after {party} names its rate",
-    "{Actor} of {place} count their coins twice since {party} announced its taxes",
+    "Tax collectors in {place} ask for bodyguards after {party} announces its tax rate",
+    "{Actor} in {place} are counting their coins twice since {party} announced its taxes",
   ],
-  low: ["{party} promises feather-light taxes; {actor} of {place} dare to hope"],
-  soldiers: ["{Actor} in {place} ask who will pay the garrison under {party}'s light taxes"],
+  low: ["{party} promises very low taxes; {actor} in {place} dare to hope"],
+  soldiers: ["{Actor} in {place} ask who will pay the army with {party}'s low taxes"],
 };
 
 const FRICTION_T = [
-  "{party} clerks deny that the {lawR} and the {lawN} 'cannot both be true'",
+  "{party} denies that the {lawR} and the {lawN} contradict each other",
   "Confusion in {place}: {party} passed the {lawR} at home and now promises the {lawN}",
-  "'Which is it?' ask {actor} of {place}, holding up the {lawR} and the {lawN}",
+  "'Which is it?' ask {actor} in {place}, pointing at the {lawR} and the {lawN}",
 ];
 
 const TREND_T = {
-  up: ["Tavern talk in {place} says {party} is gaining ground", "A late surge for {party}? The alehouses of {place} think so"],
-  down: ["Tavern talk in {place} says {party} has had a bad week", "Fewer {party} ribbons seen in {place} than a week ago"],
+  up: ["People in {place} say {party} is gaining support", "Is {party} surging late? The pubs of {place} think so"],
+  down: ["People in {place} say {party} has had a bad week", "Fewer {party} ribbons around {place} than a week ago"],
 };
 
 const EVENT_FOLLOW = {
-  good: ["{party} is praised for foresight: {actor} of {place} say its laws were made for times like these"],
-  bad: ["As trouble bites, {actor} of {place} ask what {party} ever planned to do about it"],
+  good: ["{party} is praised for planning ahead: {actor} in {place} say its laws were made for times like this"],
+  bad: ["As trouble hits, {actor} in {place} ask what {party} ever planned to do about it"],
 };
 
 const FLAVOUR_T = [
-  "A two-headed calf is born in {place}; every candidate claims it as a good omen",
+  "A two-headed calf is born in {place}; every party calls it a good sign",
   "Rain in {place}. Turnout among ducks is reported to be high",
-  "A comet is seen over {region}; the priests cannot agree whom it favours",
-  "The queue at the voting oak in {place} now reaches the alehouse, to nobody's displeasure",
-  "Bellringers of {place} demand to be paid by the vote",
-  "A juggler in {place} is mistaken for a candidate and gathers a small following",
-  "The town crier of {place} loses his voice; democracy continues in whispers",
-  "Old men of {place} agree that elections were better in their day",
+  "A comet is seen over {region}; priests cannot agree which party it supports",
+  "The voting queue in {place} now reaches the pub, and nobody minds",
+  "Bell-ringers in {place} demand to be paid per vote",
+  "A juggler in {place} is mistaken for a candidate and gains a few fans",
+  "The town crier of {place} loses his voice; the election goes on in whispers",
+  "Old men in {place} agree that elections were better in their day",
 ];
 
 interface Candidate {
@@ -298,7 +298,7 @@ export function buildHeadlines(facts: StoryFacts, K: number, perTick: number): H
       const ev = facts.event;
       const r = ev.region ?? 0;
       const text = fill(pick(ev.region === null ? ev.def.national : ev.def.regional), { region: regions[r].name, capital: regions[r].capital });
-      list.push({ text: "By proclamation: " + text, kind: "event", at: 0 });
+      list.push({ text: "Breaking news: " + text, kind: "event", at: 0 });
     }
     while (list.length < perTick) {
       const open = pool.filter((c) => c.from <= k && c.to >= k);

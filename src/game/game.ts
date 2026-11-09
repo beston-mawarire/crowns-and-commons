@@ -128,7 +128,7 @@ const PARTY_WORDS = ["Oak", "Lantern", "Harrow", "Anvil", "Heron", "Thistle", "Q
 
 /** A newcomer takes a seat, if the match has not started and there is room. */
 export function join(room: Room, newId: NewId, name?: string): Player | string {
-  if (room.phase !== "lobby") return "This match has already started, and only its players can watch it.";
+  if (room.phase !== "lobby") return "This match has already started. Only the players already in it can watch.";
   if (room.players.length >= RULES.maxPlayers) return "This room is full (five parties at most).";
   const fallback = `The ${PARTY_WORDS[(room.players.length + room.seed) % PARTY_WORDS.length]} Party`;
   const player = newPlayer(room, newId, cleanName(name) || fallback, false);
@@ -162,7 +162,7 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
       const name = cleanName(msg.name);
       if (name) me.name = name;
       if (typeof msg.color === "string" && COLORS.some((c) => c.id === msg.color)) {
-        if (room.players.some((p) => p !== me && p.color === msg.color)) return "Another party already flies that colour.";
+        if (room.players.some((p) => p !== me && p.color === msg.color)) return "Another party is already using that colour.";
         me.color = msg.color;
       }
       return null;
@@ -223,7 +223,7 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
     }
     case "forceLock": {
       if (room.phase !== "planning") return null;
-      if (!mayHost(room, playerId)) return "Only the host can call time.";
+      if (!mayHost(room, playerId)) return "Only the host can end planning early.";
       lockEveryone(store, now);
       return null;
     }
@@ -237,7 +237,7 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
     }
     case "next": {
       if (room.phase !== "results") return null;
-      if (!mayHost(room, playerId)) return "Only the host can move the match on.";
+      if (!mayHost(room, playerId)) return "Only the host can continue the match.";
       if (room.outcome?.kind === "none") restartRegional(store, now);
       else if (room.outcome?.kind === "advance") startNational(store, now);
       return null;
@@ -486,7 +486,7 @@ export function setConnected(room: Room, playerId: string, connected: boolean) {
 
 // ---------------------------------------------------------------- what a browser may see
 
-const MOODS = ["mutinous", "restless", "uneasy", "settled", "content", "thriving"];
+const MOODS = ["furious", "unhappy", "unsure", "okay", "happy", "very happy"];
 const mood = (sat: number) => MOODS[Math.min(5, Math.max(0, Math.floor((sat - 10) / 15)))];
 
 const round2 = (x: number) => Math.round(x * 50) / 50;

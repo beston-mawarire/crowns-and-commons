@@ -2,7 +2,7 @@
 
 A small multiplayer election game for the browser. Two to five parties share one medieval
 continent, cut into one region each. Write the laws, court the people, win half of your own
-region, then win the realm. No combat, no game engine, no accounts: send friends a link.
+region, then win the country. No combat, no game engine, no accounts: send friends a link.
 
 The full rules, and every design decision behind them, are in [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -72,6 +72,7 @@ All balance lives in data, not code:
 - `src/game/data.ts` `MODEL`: how strongly platforms move voters, the pull of the Old Order
   (`q0`), tax effects, campaign strengths, event odds.
 
-After changing either, run `npm run calibrate`. The current targets: a thoughtful newcomer
-clears 50% in their region a little over half the time, an expert nearly always, a careless
-platform rarely; in the nationwide round the Old Order takes about a quarter of the vote.
+After changing either, run `npm run calibrate`. With the qualifying bar at 30%
+(`RULES.qualifyShare`), almost every sensible platform reaches the national round and only
+a platform its region really dislikes is knocked out; in the national round the Old Order
+takes about a quarter of the vote.

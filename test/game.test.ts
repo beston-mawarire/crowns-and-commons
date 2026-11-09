@@ -40,9 +40,14 @@ const goodPlatform = (store: Store, p: Player, seed = 1) =>
     full: true,
   });
 
-const badPlatform = () => ({
-  // Everything the commons hate, taxed to the hilt.
-  laws: CATEGORIES.flatMap((c) => lawsOf("R", c.id).slice().sort((a, b) => a.w[0] - b.w[0]).filter((l, _i, arr) => Math.abs(l.pos - arr[0].pos) <= RULES.maxSpread).slice(0, 2).map((l) => l.id)),
+/** The worst possible platform for a region: every law its people dislike most, taxed to the limit. */
+const badPlatform = (store: Store, p: Player) => {
+  // Make sure of it: this region was perfectly happy with the old council.
+  store.room.regions[p.home].sat0 = new Array(G).fill(95);
+  return worst(store, p);
+};
+const worst = (store: Store, p: Player) => ({
+  ...clerk({ round: 1, regions: [store.room.regions[p.home]], home: 0, gold: p.gold, rng: mulberry32(3), noise: 0, lean: new Array(G).fill(-1), full: false }),
   tax: 40,
   actions: [],
 });
@@ -198,7 +203,7 @@ describe("a match", () => {
     expect(handle(store, b.id, { type: "lock", platform: goodPlatform(store, b, 2) }, 3000, newId)).toBeNull();
     expect(store.room.phase).toBe("planning");
     expect(handle(store, c.id, { type: "lock", platform: { laws: ["R1.1"], tax: 15, actions: [] } }, 3000, newId)).toMatch(/at least 2/);
-    expect(handle(store, c.id, { type: "lock", platform: badPlatform() }, 3000, newId)).toBeNull();
+    expect(handle(store, c.id, { type: "lock", platform: badPlatform(store, c) }, 3000, newId)).toBeNull();
     expect(store.room.phase).toBe("counting");
     expect(a.gold).toBeLessThan(RULES.startGold);
 
@@ -212,7 +217,8 @@ describe("a match", () => {
     expect(store.room.outcome!.kind).toBe("advance");
     expect(a.qualified && b.qualified).toBe(true);
     expect(c.qualified).toBe(false);
-    expect(store.room.results1!.parties[a.id].share).toBeGreaterThanOrEqual(0.5);
+    expect(store.room.results1!.parties[a.id].share).toBeGreaterThanOrEqual(RULES.qualifyShare);
+    expect(store.room.results1!.parties[c.id].share).toBeLessThan(RULES.qualifyShare);
     // Platforms become public record once the votes are in.
     expect(JSON.stringify(view(store.room, c.id, now))).toContain(a.regional!.laws[0]);
 
@@ -258,7 +264,7 @@ describe("a match", () => {
     const [a, b] = players;
     handle(store, a.id, { type: "start" }, 2000, newId);
     handle(store, a.id, { type: "lock", platform: goodPlatform(store, a) }, 3000, newId);
-    handle(store, b.id, { type: "lock", platform: badPlatform() }, 3000, newId);
+    handle(store, b.id, { type: "lock", platform: badPlatform(store, b) }, 3000, newId);
     runCount(store, 3000);
     expect(store.room.phase).toBe("final");
     expect(store.room.outcome).toMatchObject({ kind: "single", winner: a.id });
@@ -268,8 +274,8 @@ describe("a match", () => {
     const { store, players } = room(2, 0);
     const [a, b] = players;
     handle(store, a.id, { type: "start" }, 2000, newId);
-    handle(store, a.id, { type: "lock", platform: badPlatform() }, 3000, newId);
-    handle(store, b.id, { type: "lock", platform: badPlatform() }, 3000, newId);
+    handle(store, a.id, { type: "lock", platform: badPlatform(store, a) }, 3000, newId);
+    handle(store, b.id, { type: "lock", platform: badPlatform(store, b) }, 3000, newId);
     const now = runCount(store, 3000);
     expect(store.room.outcome!.kind).toBe("none");
     expect(store.room.phase).toBe("results");

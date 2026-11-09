@@ -1,5 +1,7 @@
 # Crowns & Commons: master design (phase one)
 
+All wording that players see (laws, news, buttons) is written in plain modern English.
+
 One place for everything agreed so far. Section 12 lists the choices that were made while
 building and still want a yes or no from playtesting.
 
@@ -38,7 +40,8 @@ realm has a winner.
      and the map filling in every thirty seconds. No numbers are shown.
    - *Result.* The map is fully painted. **View results** shows, for every party, the share
      of each group that voted for it.
-3. **Qualification.** A party needs at least 50% of the votes cast in its home region.
+3. **Qualification.** A party needs at least 30% of the votes cast in its home region
+   (lowered from 50% after the first live test, so that most matches reach round two).
    - Exactly one party qualifies: it wins the match outright.
    - No party qualifies: the regional round is held again.
    - Two or more qualify: they go on to round two. The rest are eliminated and watch.
@@ -52,7 +55,7 @@ realm has a winner.
 
 ## 4. The people
 
-Six groups: commoners, merchants, artisans, clergy, military, nobility.
+Six groups, shown in the game as: commoners, traders, craft workers, church, soldiers, nobles.
 
 - Every region has its own mix (a port has more merchants, a border march more soldiers).
   Players can see the mix and a one-word mood for each group.
@@ -134,7 +137,7 @@ In other words: laws and campaigning decide *whom* a group prefers; satisfaction
 *how many of them bother to vote*.
 
 - In round one each party is alone on the ballot in its home region against the Old Order,
-  and needs half of the votes cast.
+  and needs 30% of the votes cast.
 - In round two the platform score is 40% the regional record and 60% the new nationwide laws.
 - Carrying a home region earns legitimacy only. There is no bonus of any kind in round two.
 - If nobody qualifies, the Old Order is a little weaker each time the round is re-run.
@@ -180,6 +183,7 @@ party with grain laws is praised in a bad harvest, a party without is blamed.
 | 6 | Taxes must cover costly promises (section 6). | Otherwise 0% tax is always the best choice and the slider is not a decision. |
 | 7 | Players see their region's group mix and a mood word per group. | Something has to be visible to plan against; the weights stay hidden. |
 | 8 | If the host disconnects, any player still present may press the host's buttons. | So a match cannot be stranded. |
+| 9 | With the bar at 30%, round one is mostly a warm-up: in simulation even a random platform qualifies about 86% of the time, and only a platform its region really dislikes is knocked out. The Old Order's strength (`q0`) was left as it was. | Raising `q0` would make 30% a real test again; `npm run calibrate -- --tune` finds the value. |
 
 ## 13. Left for phase two
 
