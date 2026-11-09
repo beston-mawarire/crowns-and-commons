@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crowns &amp; Commons</title>
+    <meta name="description" content="A small multiplayer election game: write the laws, win your region, then win the realm." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23111'/%3E%3Cpath d='M6 22V11l5 5 5-8 5 8 5-5v11z' fill='%23faf8f2'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <!-- Front door: shown when there is no ?room= in the address -->
+    <section id="home" hidden>
+      <div class="home-card">
+        <p class="kicker">A game of ballots, not battles</p>
+        <h1>Crowns <span class="amp">&amp;</span> Commons</h1>
+        <p class="lede">Two to five parties. One small continent. Write the laws, court the people, win your region, then win the realm.</p>
+        <div class="home-actions">
+          <button id="create" class="btn big">Open a new room</button>
+          <form id="joinform">
+            <input id="joincode" maxlength="5" placeholder="Room code" autocomplete="off" aria-label="Room code" />
+            <button class="btn ghost">Join</button>
+          </form>
+        </div>
+        <ol class="howto">
+          <li><b>Choose your laws.</b> Two or three in each of nine fields, from the commune to the counting-house. Every law pleases someone and costs you someone else.</li>
+          <li><b>Campaign.</b> Three actions a round, paid for in gold. No loans.</li>
+          <li><b>Watch the count.</b> The map fills with your colour as votes come in, and the news tells you how the people took it.</li>
+          <li><b>Win half your region</b> to stand for the whole realm. Win the realm to win the match.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- The table: shown once seated in a room -->
+    <div id="game" hidden>
+      <header id="top">
+        <a class="brand" href="/">Crowns <span class="amp">&amp;</span> Commons</a>
+        <div id="phase"></div>
+        <div id="clock" aria-live="off"></div>
+        <button id="invite" class="btn ghost small" title="Copy the invitation link"></button>
+      </header>
+      <div id="ticker"><span class="tick-label">News</span><div id="headline" aria-live="polite"></div></div>
+      <main id="board">
+        <aside id="left" class="panel"></aside>
+        <section id="centre">
+          <div id="banner"></div>
+          <div id="mapwrap">
+            <svg id="map" role="img" aria-label="Map of the continent"></svg>
+            <div id="flash" hidden></div>
+          </div>
+          <div id="legend"></div>
+          <div id="mapactions"></div>
+          <ol id="newslog"></ol>
+        </section>
+        <aside id="right" class="panel"></aside>
+      </main>
+    </div>
+
+    <div id="modal" hidden></div>
+    <div id="toast" hidden></div>
+    <div id="lost" hidden>Connection lost. Trying again…</div>
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>

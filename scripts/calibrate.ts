@@ -8,8 +8,8 @@
 
 import { CATEGORIES, G, MODEL, RULES } from "../src/game/data";
 import { lawsOf } from "../src/game/laws";
-import { clerk } from "../src/game/rules";
-import { makeRegions, mulberry32, runElection, shuffle, type Platform, type Region, type Rng } from "../src/game/sim";
+import { clerk, randomLean } from "../src/game/rules";
+import { makeRegions, mulberry32, runElection, shuffle, type Contender, type Platform, type Region, type Rng } from "../src/game/sim";
 
 type Strategy = (region: Region, rng: Rng) => Platform;
 
@@ -72,4 +72,38 @@ if (process.argv.includes("--tune")) {
   const q0 = Math.round(((lo + hi) / 2) * 100) / 100;
   console.log(`\nSuggested q0 for a ${(target * 100).toFixed(1)}% sensible-campaign success rate: ${q0}`);
   report(q0);
+}
+
+// ---- the nationwide round, played by bots as they play in the real game
+console.log(`\nNationwide round between bots (q0 shifted by -${MODEL.q0NationalShift}):`);
+for (const n of [2, 3, 4, 5]) {
+  let qualified = 0;
+  let games = 0;
+  let old = 0;
+  let winner = 0;
+  const runs = 400;
+  for (let i = 0; i < runs; i++) {
+    const rng = mulberry32(77 + i * 131 + n);
+    const regions = makeRegions(n, rng);
+    const parties: Contender[] = regions.map((_, h) => ({
+      id: "p" + h,
+      name: "P",
+      home: h,
+      regional: clerk({ round: 1, regions: [regions[h]], home: 0, gold: RULES.startGold, rng, noise: 5, lean: randomLean(rng), full: true }),
+    }));
+    const first = runElection({ round: 1, regions, parties, seed: i * 3 + 1, q0: MODEL.q0, headlinesPerTick: 0 });
+    const through = parties.filter((p) => first.results.parties[p.id].share >= RULES.qualifyShare);
+    qualified += through.length / n;
+    if (through.length < 2) continue;
+    regions.forEach((r, k) => (r.sat = first.satAfter[k]));
+    for (const p of through) p.national = clerk({ round: 2, regions, home: p.home, gold: 70, rng, noise: 5, lean: randomLean(rng), full: true });
+    const second = runElection({ round: 2, regions, parties: through, seed: i * 3 + 2, q0: MODEL.q0 - MODEL.q0NationalShift, headlinesPerTick: 0 }).results;
+    games++;
+    old += second.old.share;
+    winner += Math.max(...through.map((p) => second.parties[p.id].share));
+  }
+  console.log(
+    `  ${n} parties: bots qualify ${((qualified / runs) * 100).toFixed(0)}% of the time; a national round happens in ${((games / runs) * 100).toFixed(0)}% of matches; ` +
+      `Old Order takes ${((old / games) * 100).toFixed(0)}%, the winner ${((winner / games) * 100).toFixed(0)}%`,
+  );
 }

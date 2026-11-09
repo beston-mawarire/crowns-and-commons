@@ -349,7 +349,7 @@ function startCount(store: Store, now: number) {
     regions: room.regions,
     parties,
     seed: (room.seed + room.match * 104729 + room.attempt * 1299709 + room.round * 15485863 + (now % 1000003)) >>> 0,
-    q0: MODEL.q0 - MODEL.q0RestartStep * (room.attempt - 1),
+    q0: MODEL.q0 - MODEL.q0RestartStep * (room.attempt - 1) - (room.round === 2 ? MODEL.q0NationalShift : 0),
     ticks: K,
     headlinesPerTick: Math.min(5, Math.max(1, Math.round(periodMs / 6000))),
   });

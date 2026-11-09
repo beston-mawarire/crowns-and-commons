@@ -41,13 +41,13 @@ const raw: [string, string, string, W, string, D, string?][] = [
   ["R1.3", "Assize of Bread", "The price of a loaf is pegged to the price of grain, so no baker can gouge.", [2, -1, -1, 1, 0, 0], "Bakers sell short weight, and shelves empty in lean months.", { Co: -1, Ar: -1 }, "grain"],
   ["R1.4", "Guild Charter", "Chartered guilds guarantee the quality of every craft.", [-1, -1, 3, 1, 0, 0], "The guilds shut out newcomers and prices rise.", { Co: -1, Me: -1 }],
   ["R1.5", "Chartered Company", "One company holds sole rights to a rich trade route and pays well for it.", [-1, 2, -1, 0, 0, 1], "Monopoly prices, and a company that buys the council.", { Co: -1, Ar: -1 }, "trade"],
-  ["R1.6", "Open Shops", "Anyone may open a workshop and sell their wares.", [1, 2, -3, 0, 0, 0], "Masters' incomes collapse and shoddy goods flood the stalls.", { Ar: -1, Co: -1 }],
-  ["R1.7", "Sell the Commons", "Sell the common lands for a handsome windfall.", [-2, 3, 0, -1, 0, 2], "The windfall is soon spent; the grazing and the rents are gone for good.", { Co: -2 }],
+  ["R1.6", "Open Shops Act", "Anyone may open a workshop and sell their wares.", [1, 2, -3, 0, 0, 0], "Masters' incomes collapse and shoddy goods flood the stalls.", { Ar: -1, Co: -1 }],
+  ["R1.7", "Sale of the Commons", "Sell the common lands for a handsome windfall.", [-2, 3, 0, -1, 0, 2], "The windfall is soon spent; the grazing and the rents are gone for good.", { Co: -2 }],
 
-  ["N1.1", "Realm Holds Mines & Forests", "Mines and forests belong to the realm, and their profits pay for its needs.", [2, -3, -1, 0, 1, -3], "Crown works run slack and fill with cronies.", { Co: -1, Mi: -1 }],
+  ["N1.1", "Realm Mines & Forests", "Mines and forests belong to the realm, and their profits pay for its needs.", [2, -3, -1, 0, 1, -3], "Crown works run slack and fill with cronies.", { Co: -1, Mi: -1 }],
   ["N1.2", "Crown Monopolies", "The crown alone sells salt and iron, at a steady price.", [-2, -2, -1, 0, 1, 1], "Smuggling thrives and salt riots break out.", { Co: -1, Mi: -1 }],
   ["N1.3", "Realm Statute of Crafts", "One code of trades for the whole realm, the same in every town.", [-1, -1, 2, 1, 0, 1], "Trades grow rigid and skilled hands run short.", { Me: -1, Ar: -1 }],
-  ["N1.4", "One Coin, One Measure", "A single coinage and a single set of weights and measures.", [1, 2, 1, 0, 0, -1], "Lords lose their mints and tolls, and do not forget it.", { No: -2 }, "trade"],
+  ["N1.4", "One Coin, One Measure Act", "A single coinage and a single set of weights and measures.", [1, 2, 1, 0, 0, -1], "Lords lose their mints and tolls, and do not forget it.", { No: -2 }, "trade"],
   ["N1.5", "Charter of Free Enterprise", "Any subject may practise any trade, anywhere in the realm.", [0, 3, -2, 0, 0, 1], "The guilds collapse and fortunes pull apart.", { Ar: -1, Co: -1 }, "trade"],
   ["N1.6", "Great Sale of Crown Estates", "Sell the crown's estates and clear the realm's debts at a stroke.", [-2, 2, 0, -1, -1, 3], "Crown income falls, and taxes rise to fill the hole.", { Co: -1, Mi: -1 }],
 
@@ -62,10 +62,10 @@ const raw: [string, string, string, W, string, D, string?][] = [
 
   ["N2.1", "Realm Wealth Levy & Dole", "Great fortunes fund a dole for every poor household in the realm.", [3, -2, 1, 0, 0, -3], "Wealth takes flight and assessors are bribed.", { Me: -1, Co: -1 }],
   ["N2.2", "Graduated Income Assessment", "Each pays according to what they earn.", [2, -1, 1, 0, 0, -2], "Clerks pry into every ledger in the land.", { Me: -1, Ar: -1 }],
-  ["N2.3", "End Tax Privileges", "No more exemptions for lords or for the church.", [2, 1, 1, -3, 0, -3], "Pulpits and great halls unite against the measure.", { Cl: -1, No: -1 }, "secular"],
+  ["N2.3", "End of Tax Privileges", "No more exemptions for lords or for the church.", [2, 1, 1, -3, 0, -3], "Pulpits and great halls unite against the measure.", { Cl: -1, No: -1 }, "secular"],
   ["N2.4", "Single Land Tax", "One clear tax, on land alone.", [1, 1, 1, -1, 0, -2], "Landlords pass it straight on in higher rents.", { Co: -2 }],
   ["N2.5", "Customs & Excise Realm", "Taxes are taken only at ports and markets.", [-2, -1, -1, 0, 1, 2], "Bread and ale grow dear, and smuggling booms.", { Co: -1, Me: -1 }],
-  ["N2.6", "Abolish Direct Taxes", "No collector will ever knock at your door again.", [-1, 2, 1, -1, -2, 3], "Soldiers and almshouses go unpaid.", { Mi: -2, Co: -1 }],
+  ["N2.6", "Abolition of Direct Taxes", "No collector will ever knock at your door again.", [-1, 2, 1, -1, -2, 3], "Soldiers and almshouses go unpaid.", { Mi: -2, Co: -1 }],
 
   // ---- 3 Labour: workers protected -> masters in control
   ["R3.1", "Worker Commune", "Journeymen run their shops together and share the takings.", [3, -2, 1, 0, 0, -2], "Shops starve for capital and argue over every decision.", { Ar: -1, Co: -1 }],
@@ -78,7 +78,7 @@ const raw: [string, string, string, W, string, D, string?][] = [
 
   ["N3.1", "Right to Work", "Realm workshops guarantee a job to anyone who wants one.", [3, -2, 0, 0, 0, -2], "Costs balloon, and closing the workshops would mean riots.", { Me: -1, Co: -1 }, "spend"],
   ["N3.2", "Realm Wage Floor", "One minimum wage, the same from coast to coast.", [2, -1, 0, 1, 0, -1], "Poor country masters cannot pay it.", { Co: -1, No: -1 }],
-  ["N3.3", "End Serfdom", "Every peasant in the realm is declared free.", [3, 1, 1, 0, 0, -3], "The freed owe redemption debts for a generation.", { Co: -2 }],
+  ["N3.3", "Emancipation of the Serfs", "Every peasant in the realm is declared free.", [3, 1, 1, 0, 0, -3], "The freed owe redemption debts for a generation.", { Co: -2 }],
   ["N3.4", "Free Movement of Labour", "Any subject may seek work in any town.", [1, 2, -1, 0, 0, -1], "Villages empty and towns overflow.", { No: -1, Ar: -1 }],
   ["N3.5", "Combination Act", "No strikes and no workers' leagues: steady work for steady pay.", [-2, 2, -2, 0, 1, 2], "Journeymen meet in secret and the unrest goes underground.", { Ar: -1, Mi: -1 }],
   ["N3.6", "Realm Statute of Labourers", "Wages capped at customary rates throughout the realm.", [-3, 1, -1, 0, 0, 3], "Evasion everywhere, and revolt in the air.", { Co: -1, Mi: -1 }],
@@ -105,17 +105,17 @@ const raw: [string, string, string, W, string, D, string?][] = [
   ["R5.4", "Church Almonry", "The church hands out alms at the abbey gate.", [1, 0, 0, 2, 0, 0], "Alms reach some parishes and never reach others.", { Co: -1 }, "church"],
   ["R5.5", "Guild Mutual Aid", "The guilds look after their own sick and widowed.", [-1, 1, 2, 0, 0, 0], "Those outside the guilds get nothing.", { Co: -1 }],
   ["R5.6", "Workhouse Test", "Relief is given, but only inside the workhouse.", [-2, 1, 0, 0, 0, 1], "Misery behind the walls and riots at the gates.", { Co: -1, Cl: -1 }],
-  ["R5.7", "Private Charity Only", "No poor tax at all: charity is a private virtue.", [-3, 2, 0, 0, 0, 2], "Vagrancy, theft and sickness spread.", { Co: -1, Ar: -1 }],
+  ["R5.7", "Private Charity Rule", "No poor tax at all: charity is a private virtue.", [-3, 2, 0, 0, 0, 2], "Vagrancy, theft and sickness spread.", { Co: -1, Ar: -1 }],
 
   ["N5.1", "Realm Relief Guarantee", "No subject of the realm shall starve.", [3, -2, 0, -1, 0, -2], "An enormous cost, and the church's charity is pushed aside.", { Me: -1, Cl: -1 }, "spend grain"],
   ["N5.2", "Plague Wardens", "Wardens of health in every port and town.", [2, -1, 0, 0, 1, 0], "Costly, and ports and fairs are shut at a rumour.", { Me: -1 }, "spend health"],
-  ["N5.3", "A School in Every Parish", "Letters and numbers for every child.", [2, 1, 1, 1, 0, -1], "Costly, and the newly lettered begin to ask questions.", { No: -1, Cl: -1 }, "spend"],
+  ["N5.3", "Parish Schools Act", "Letters and numbers for every child.", [2, 1, 1, 1, 0, -1], "Costly, and the newly lettered begin to ask questions.", { No: -1, Cl: -1 }, "spend"],
   ["N5.4", "Realm Poor Law", "The same parish relief in every corner of the realm.", [2, -1, 0, 1, 0, -1], "Ratepayers revolt.", { Ar: -1, Me: -1 }, "spend grain"],
   ["N5.5", "Workhouse Act", "Relief everywhere, but only through the workhouse.", [-2, 1, 0, 0, 0, 1], "Misery and riots.", { Co: -1, Cl: -1 }],
-  ["N5.6", "Repeal All Relief", "An end to public alms, and to the taxes that pay for them.", [-3, 2, 0, 0, 0, 2], "Vagrancy and disorder on every road.", { Co: -1, Mi: -1 }],
+  ["N5.6", "Repeal of All Relief", "An end to public alms, and to the taxes that pay for them.", [-3, 2, 0, 0, 0, 2], "Vagrancy and disorder on every road.", { Co: -1, Mi: -1 }],
 
   // ---- 6 Land: shared land -> great estates
-  ["R6.1", "Land to the Tiller", "The lords' fields go to those who plough them.", [3, 0, 0, -1, 0, -3], "Harvests dip while new holders find their feet.", { Co: -1, Me: -1 }],
+  ["R6.1", "Tillers' Land Act", "The lords' fields go to those who plough them.", [3, 0, 0, -1, 0, -3], "Harvests dip while new holders find their feet.", { Co: -1, Me: -1 }],
   ["R6.2", "Protected Commons", "Grazing and gathering rights guaranteed for ever.", [2, -1, 0, 1, 0, -2], "The commons are grazed bare.", { Co: -1 }],
   ["R6.3", "Rent Cap", "Rents are frozen where they stand.", [2, -1, 0, 0, 0, -2], "Landlords stop mending roofs and ditches.", { Co: -1 }],
   ["R6.4", "Three-Field Custom", "Keep the old rotation our grandfathers kept.", [1, 0, 0, 1, 0, 1], "Yields never improve.", { Me: -1, Co: -1 }],
@@ -152,7 +152,7 @@ const raw: [string, string, string, W, string, D, string?][] = [
   ["R8.3", "Gallows Code", "Harsh sentences to put fear into thieves.", [-2, 1, 0, -1, 1, 2], "Juries refuse to convict rather than hang a neighbour.", { Me: -1, Cl: -1 }, "order"],
   ["R8.4", "King's Justices on Circuit", "Royal judges ride out to hear every case.", [1, 1, 1, 0, 0, -1], "Slow and costly: cases wait a year.", { Co: -1, Me: -1 }],
   ["R8.5", "Jury of Peers", "Every accused is judged by their neighbours.", [2, 1, 1, 0, 0, -1], "Juries acquit their friends.", { Me: -1, No: -1 }, "liberty"],
-  ["R8.6", "Free Printing", "Anyone may print and post handbills.", [1, 1, 1, -2, -1, -1], "Libels and sedition on every wall.", { No: -1, Cl: -1 }, "liberty"],
+  ["R8.6", "Free Printing Act", "Anyone may print and post handbills.", [1, 1, 1, -2, -1, -1], "Libels and sedition on every wall.", { No: -1, Cl: -1 }, "liberty"],
   ["R8.7", "Habeas Corpus & Assembly", "No one is jailed without cause, and all may gather freely.", [2, 1, 2, 0, -2, -1], "Unrest becomes harder to put down.", { Mi: -1, No: -1 }, "liberty"],
 
   ["N8.1", "Martial Law & Informers", "Order across the realm, kept by soldiers and watchful eyes.", [-3, -2, -2, 0, 3, 1], "Neighbours inform on neighbours and trust collapses.", { Me: -1, Cl: -1 }, "order"],
@@ -160,15 +160,15 @@ const raw: [string, string, string, W, string, D, string?][] = [
   ["N8.3", "King's Common Law", "One system of royal courts for all.", [1, 2, 1, -1, 0, -2], "Church and lords lose their courts, and their fees.", { Cl: -1, No: -1 }],
   ["N8.4", "Charter of Liberties", "Due process for every free subject.", [2, 1, 1, 0, -1, 1], "Justice slows to a crawl.", { Me: -1, Mi: -1 }, "liberty"],
   ["N8.5", "Bill of Rights", "Free speech, free petition and no cruel punishments.", [2, 2, 2, -1, -1, 0], "The great are mocked in print.", { No: -1, Cl: -1 }, "liberty"],
-  ["N8.6", "Abolish Torture & Gallows", "No rack and no rope anywhere in the realm.", [1, 0, 1, 1, -2, -1], "Every theft becomes a panic.", { Me: -1, Co: -1 }, "liberty"],
+  ["N8.6", "Abolition of Torture & Gallows", "No rack and no rope anywhere in the realm.", [1, 0, 1, 1, -2, -1], "Every theft becomes a panic.", { Me: -1, Co: -1 }, "liberty"],
 
   // ---- 9 Religion: one church -> secular realm
-  ["R9.1", "One Faith Enforced", "One people, one worship, one peace.", [-1, -2, -2, 3, 0, 0], "Skilled dissenters pack up and leave.", { Ar: -1, Me: -1 }, "church"],
+  ["R9.1", "Act of One Faith", "One people, one worship, one peace.", [-1, -2, -2, 3, 0, 0], "Skilled dissenters pack up and leave.", { Ar: -1, Me: -1 }, "church"],
   ["R9.2", "Compulsory Tithe", "A tenth of every harvest keeps the church in good repair.", [-2, -1, -1, 3, 0, -1], "Farmers come to hate the tithe barn.", { Co: -1 }, "church"],
   ["R9.3", "Church Courts", "The clergy are judged by the clergy.", [-1, -1, 0, 3, 0, -1], "A scandal when a guilty priest walks free.", { Co: -1, No: -1 }, "church"],
   ["R9.4", "Church Schools & Alms", "The council pays for church schools and alms.", [1, 0, 1, 2, 0, 0], "Costly to keep up.", { Me: -1 }, "spend church"],
   ["R9.5", "Toleration Edict", "Other faiths may worship in peace.", [0, 2, 1, -2, 0, 0], "Quarrels between congregations.", { Co: -1, Cl: -1 }, "secular"],
-  ["R9.6", "Tax Church Lands", "Church estates pay their fair share.", [1, 1, 0, -3, 1, 1], "Church charity dries up.", { Co: -2 }, "secular"],
+  ["R9.6", "Tax on Church Lands", "Church estates pay their fair share.", [1, 1, 0, -3, 1, 1], "Church charity dries up.", { Co: -2 }, "secular"],
   ["R9.7", "Secular Charter", "Church and council are kept apart.", [0, 2, 1, -3, 0, -1], "The church's schools and almshouses close.", { Co: -2 }, "secular"],
 
   ["N9.1", "Established Realm Church", "The church takes its seat in the great council.", [0, -1, -1, 3, 1, 1], "Dissent festers out of sight.", { Ar: -1, Me: -1 }, "church"],

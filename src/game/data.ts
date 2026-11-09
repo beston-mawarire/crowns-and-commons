@@ -82,6 +82,11 @@ export const MODEL = {
   mu: 0.5,
   /** Base pull of the Old Order (the difficulty knob), tuned by scripts/calibrate.ts. */
   q0: 0.23,
+  /**
+   * In the nationwide round the Old Order stays on the ballot but is a weakened force:
+   * with this shift it takes roughly a quarter of the vote between typical platforms.
+   */
+  q0NationalShift: 1.0,
   /** Each failed regional round lowers the Old Order's pull by this much. */
   q0RestartStep: 0.08,
   /** Extra attachment of each group to the old ways. */
@@ -96,7 +101,8 @@ export const MODEL = {
   lawNorm: 18,
   /** Round 2 blend of the regional record and the new national laws. */
   regionalShare: 0.4,
-  homeBonus: 0.15,
+  /** Carrying your home region earns legitimacy only: no head start in the national round. */
+  homeBonus: 0,
   noise: 0.15,
   tickNoise: 0.03,
   /** Hidden downsides fade in between these fractions of the count. */
