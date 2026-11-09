@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { CATEGORIES, G, MODEL, RULES } from "../src/game/data";
+import { CATEGORIES, G, ISSUES, MODEL, RULES } from "../src/game/data";
 import { LAWS, LAW_BY_ID, frictionBetween, lawsOf, publicCatalogue } from "../src/game/laws";
-import { clerk, problem, sanitize } from "../src/game/rules";
+import { clerk, problem, sanitize, sanitizeReaction } from "../src/game/rules";
 import { createRoom, handle, join, nextAlarm, onAlarm, view, welcome, byToken, type Player, type Store } from "../src/game/game";
-import { campaignEffects, makeRegions, mulberry32, runElection, shortfall, type Contender } from "../src/game/sim";
+import { NEUTRAL, allocateSeats, campaignEffects, makeRegions, mulberry32, runElection, shortfall, weights, type Contender } from "../src/game/sim";
 
 let idCounter = 0;
 const newId = () => `id${++idCounter}`;
@@ -86,7 +86,7 @@ describe("catalogue", () => {
 });
 
 describe("plans", () => {
-  const ctx = { round: 1 as const, gold: 60, regions: 3 };
+  const ctx = { round: 1 as const, gold: 60, regions: 3, min: 2, max: 3, rivals: [] as string[] };
 
   it("caps laws at three per category and refuses contradictory picks", () => {
     const p = sanitize({ laws: ["R1.1", "R1.2", "R1.3", "R1.4", "R1.7", "N1.1", "nope"], tax: 99, actions: [] }, ctx);
@@ -227,7 +227,8 @@ describe("a match", () => {
     expect(handle(store, a.id, { type: "next" }, now, newId)).toBeNull();
     expect(store.room.round).toBe(2);
     expect(c.eliminated).toBe(true);
-    expect(a.gold).toBe(goldBefore + RULES.roundIncome);
+    // Donations follow the regional result: a base plus a share-based top-up.
+    expect(a.gold).toBe(goldBefore + RULES.donationBase + Math.round(store.room.results1!.parties[a.id].share * RULES.donationPerShare));
     expect(c.gold).toBeLessThanOrEqual(RULES.startGold);
 
     // The eliminated player can watch but not act.
@@ -235,13 +236,15 @@ describe("a match", () => {
     expect(view(store.room, c.id, now).you.eliminated).toBe(true);
 
     // Regional laws cannot be offered again as national ones.
-    const mixed = sanitize({ laws: a.regional!.laws }, { round: 2, gold: a.gold, regions: 3 });
+    const mixed = sanitize({ laws: a.regional!.laws }, { round: 2, gold: a.gold, regions: 3, min: 2, max: 3, rivals: [] });
     expect(mixed.laws).toHaveLength(0);
 
     const planA = goodPlatform(store, a, 5);
     expect(planA.actions.every((x) => typeof x.r === "number")).toBe(true);
     handle(store, a.id, { type: "lock", platform: planA }, now, newId);
     handle(store, b.id, { type: "lock", platform: goodPlatform(store, b, 6) }, now, newId);
+    expect(store.room.phase).toBe("planning"); // waiting for the knocked-out player to endorse or decline
+    handle(store, c.id, { type: "endorse", id: "" }, now, newId);
     expect(store.room.phase).toBe("counting");
     now = runCount(store, now);
 
@@ -297,8 +300,9 @@ describe("a match", () => {
     expect(store.room.phase).toBe("counting");
     expect(a.regional!.laws).toContain("R1.1");
     expect(a.regional!.tax).toBe(20);
-    expect(problem(a.regional!, { round: 1, gold: 60, regions: 2 })).toBeNull();
-    expect(problem(b.regional!, { round: 1, gold: 60, regions: 2 })).toBeNull();
+    const ctx = { round: 1 as const, gold: 60, regions: 2, min: 2, max: 3, rivals: [] };
+    expect(problem(a.regional!, ctx)).toBeNull();
+    expect(problem(b.regional!, ctx)).toBeNull();
   });
 
   it("lets a player back in with their token, and skips the count if everyone agrees", () => {
@@ -312,5 +316,223 @@ describe("a match", () => {
     handle(store, a.id, { type: "hasten" }, 3100, newId);
     expect(store.room.phase).not.toBe("counting");
     expect(store.room.results1).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- features added after the first live test
+
+/** Run the clock until the count stops for half-time. */
+function runToHalf(store: Store) {
+  for (let i = 0; i < 20 && !store.room.count?.half; i++) onAlarm(store, nextAlarm(store.room)!);
+  expect(store.room.count?.half?.done).toBe(false);
+}
+
+describe("this year's big issue", () => {
+  it("makes laws in its two areas count double and leaves the rest alone", () => {
+    const issue = ISSUES.findIndex((i) => i.cats.includes(4) && i.cats.includes(5));
+    const world = { issue, tilt: NEUTRAL.tilt };
+    expect(weights(LAW_BY_ID["R4.1"], world).w).toEqual(LAW_BY_ID["R4.1"].w.map((w) => w * MODEL.issueMult));
+    expect(weights(LAW_BY_ID["R1.1"], world).w).toEqual([...LAW_BY_ID["R1.1"].w]);
+  });
+
+  it("is announced to the players, while the yearly shift in tastes stays hidden", () => {
+    const { store, players } = room(2, 0);
+    handle(store, players[0].id, { type: "start" }, 2000, newId);
+    const v = view(store.room, players[0].id, 2000);
+    expect(v.issue!.cats).toHaveLength(2);
+    expect(JSON.stringify(v)).not.toContain("tilt");
+  });
+});
+
+describe("half-time", () => {
+  const regions = makeRegions(3, mulberry32(11));
+  const parties: Contender[] = regions.map((_, i) => ({
+    id: "p" + i,
+    name: "Party " + "ABC"[i],
+    home: i,
+    regional: clerk({ round: 1, regions: [regions[i]], home: 0, gold: 60, rng: mulberry32(30 + i), noise: 3, full: true }),
+  }));
+  const input = { round: 1 as const, regions, parties, seed: 42, q0: MODEL.q0, headlinesPerTick: 5 };
+
+  it("leaves the first half exactly as it was and changes the second", () => {
+    const plain = runElection(input);
+    const moved = runElection({ ...input, reactions: { p0: { kind: "push", g: 0 } } });
+    expect(moved.headlines.slice(0, 5)).toEqual(plain.headlines.slice(0, 5));
+    expect(moved.results.parties.p0.share).toBeGreaterThan(plain.results.parties.p0.share);
+    expect(moved.results.parties.p1.share).toBeCloseTo(plain.results.parties.p1.share, 10);
+  });
+
+  it("takes a scrapped law off the record and out of the news", () => {
+    const law = parties[1].regional.laws[0];
+    const t = runElection({ ...input, reactions: { p1: { kind: "drop", law } } });
+    expect(t.platformsAfter.p1.laws).not.toContain(law);
+    expect(t.platformsAfter.p0.laws).toEqual(parties[0].regional.laws);
+    const lateNews = t.headlines.slice(5).flat().filter((h) => h.p === "p1").map((h) => h.text).join(" | ");
+    expect(lateNews).toContain("U-turn");
+  });
+
+  it("only accepts moves that make sense", () => {
+    const current = parties[0].regional;
+    expect(sanitizeReaction({ kind: "drop", law: "N1.1" }, current, 1, 3)).toBeNull();
+    expect(sanitizeReaction({ kind: "drop", law: current.laws[2] }, current, 1, 3)).toEqual({ kind: "drop", law: current.laws[2] });
+    expect(sanitizeReaction({ kind: "push", g: 9 }, current, 1, 3)).toBeNull();
+    expect(sanitizeReaction({ kind: "push", g: 2 }, current, 2, 3)).toBeNull(); // the national round needs a region
+    expect(sanitizeReaction({ kind: "push", g: 2, r: 1 }, current, 2, 3)).toEqual({ kind: "push", g: 2, r: 1 });
+  });
+
+  it("stops the count until every player has moved or time runs out", () => {
+    const { store, players } = room(2, 0);
+    const [a, b] = players;
+    handle(store, a.id, { type: "start" }, 2000, newId);
+    handle(store, a.id, { type: "lock", platform: goodPlatform(store, a, 1) }, 3000, newId);
+    handle(store, b.id, { type: "lock", platform: goodPlatform(store, b, 2) }, 3000, newId);
+    runToHalf(store);
+    expect(store.room.count!.released).toBe(5);
+    const stoppedAt = nextAlarm(store.room)!;
+    expect(view(store.room, a.id, stoppedAt - 20000).count!.half).toBe(stoppedAt);
+
+    const scrapped = a.regional!.laws[0];
+    handle(store, a.id, { type: "react", reaction: { kind: "drop", law: scrapped } }, stoppedAt - 20000, newId);
+    expect(store.room.count!.half!.done).toBe(false); // still waiting for the other party
+    handle(store, b.id, { type: "react", reaction: null }, stoppedAt - 15000, newId); // a pass
+    expect(store.room.count!.half!.done).toBe(true);
+    expect(store.room.count!.released).toBe(6);
+    runCount(store, stoppedAt);
+    expect(a.regional!.laws).not.toContain(scrapped);
+    expect(b.regional!.laws).toHaveLength(goodPlatform(store, b, 2).laws.length);
+  });
+});
+
+describe("attacks", () => {
+  it("are for the national round only and need a real rival", () => {
+    const pick = { a: "attack", g: 0, r: 1, t: "rival" };
+    expect(sanitize({ actions: [pick] }, { round: 1, gold: 60, regions: 3, min: 2, max: 3, rivals: [] }).actions).toHaveLength(0);
+    expect(sanitize({ actions: [pick] }, { round: 2, gold: 60, regions: 3, min: 2, max: 3, rivals: ["someone-else"] }).actions).toHaveLength(0);
+    expect(sanitize({ actions: [pick] }, { round: 2, gold: 60, regions: 3, min: 2, max: 3, rivals: ["rival"] }).actions).toEqual([pick]);
+  });
+});
+
+describe("the national round", () => {
+  /** Three players all reach the national round and lock in. */
+  function toNationalCount(lockAt: number) {
+    const made = room(3, 0);
+    const { store, players } = made;
+    handle(store, players[0].id, { type: "start" }, 2000, newId);
+    players.forEach((p, i) => handle(store, p.id, { type: "lock", platform: goodPlatform(store, p, i + 1) }, 3000, newId));
+    const now = runCount(store, 3000);
+    expect(store.room.outcome!.kind).toBe("advance");
+    handle(store, players[0].id, { type: "next" }, now, newId);
+    players.forEach((p, i) => handle(store, p.id, { type: "lock", platform: goodPlatform(store, p, i + 7) }, now + lockAt, newId));
+    expect(store.room.phase).toBe("counting");
+    return { ...made, end: runCount(store, now + lockAt) };
+  }
+
+  it("turns votes into seats, with every seat accounted for and a bonus for coming first", () => {
+    const { store } = toNationalCount(1000);
+    const seats = store.room.seats!;
+    const res = store.room.results2!;
+    expect(seats.all).toBe(seats.old + Object.values(seats.total).reduce((a, b) => a + b, 0));
+    seats.regions.forEach((r, i) => {
+      const base = Math.max(3, Math.round(store.room.regions[i].pop / RULES.votersPerSeat));
+      expect(r.total).toBe(base + RULES.winnerBonusSeats);
+      const top = Object.keys(res.regions[i].share).reduce((a, b) => (res.regions[i].share[a] >= res.regions[i].share[b] ? a : b));
+      expect(r.first).toBe(top);
+      expect(r.p[top]).toBeGreaterThanOrEqual(RULES.winnerBonusSeats);
+    });
+    expect(allocateSeats(res, store.room.regions)).toEqual(seats);
+  });
+
+  it("sends the parties into coalition talks when nobody holds more than half the seats", () => {
+    const { store, players, end } = toNationalCount(1000);
+    const seats = store.room.seats!;
+    const order = players.slice().sort((x, y) => seats.total[y.id] - seats.total[x.id]);
+    expect(seats.total[order[0].id] * 2).toBeLessThanOrEqual(seats.all);
+    expect(store.room.phase).toBe("coalition");
+    expect(nextAlarm(store.room)).toBe(end + RULES.coalitionSec * 1000);
+
+    // The two smaller parties choose each other; the biggest is left out.
+    const [first, second, third] = order;
+    handle(store, second.id, { type: "ally", id: third.id }, end + 1000, newId);
+    handle(store, first.id, { type: "ally", id: second.id }, end + 2000, newId);
+    expect(store.room.phase).toBe("coalition");
+    handle(store, third.id, { type: "ally", id: second.id }, end + 3000, newId);
+    expect(store.room.phase).toBe("final");
+    const together = seats.total[second.id] + seats.total[third.id];
+    if (together > seats.total[first.id]) expect(store.room.outcome).toMatchObject({ winner: second.id, partner: third.id, ranking: [second.id, third.id, first.id] });
+    else expect(store.room.outcome).toMatchObject({ winner: first.id, partner: null });
+  });
+
+  it("gives the biggest party the win if the talks run out of time with no deal", () => {
+    const { store, players, end } = toNationalCount(1000);
+    const seats = store.room.seats!;
+    const top = players.slice().sort((x, y) => seats.total[y.id] - seats.total[x.id])[0];
+    onAlarm(store, end + RULES.coalitionSec * 1000);
+    expect(store.room.phase).toBe("final");
+    expect(store.room.outcome).toMatchObject({ winner: top.id, partner: null });
+  });
+
+  it("lets a knocked-out party endorse one that is still in the race", () => {
+    const { store, players } = room(3, 0);
+    const [a, b, c] = players;
+    handle(store, a.id, { type: "start" }, 2000, newId);
+    handle(store, a.id, { type: "lock", platform: goodPlatform(store, a, 1) }, 3000, newId);
+    handle(store, b.id, { type: "lock", platform: goodPlatform(store, b, 2) }, 3000, newId);
+    handle(store, c.id, { type: "lock", platform: badPlatform(store, c) }, 3000, newId);
+    const now = runCount(store, 3000);
+    handle(store, a.id, { type: "next" }, now, newId);
+    expect(c.eliminated).toBe(true);
+    expect(handle(store, a.id, { type: "endorse", id: b.id }, now, newId)).toMatch(/knocked-out/);
+    expect(handle(store, c.id, { type: "endorse", id: a.id }, now, newId)).toBeNull();
+    expect(view(store.room, c.id, now).you.endorse).toBe(a.id);
+
+    // The endorsement is worth votes in the endorser's old region.
+    const base = { round: 2 as const, regions: store.room.regions, seed: 9, q0: MODEL.q0 - MODEL.q0NationalShift };
+    const stand = (endorsed: boolean): Contender[] =>
+      [a, b].map((p) => ({ id: p.id, name: p.name, home: p.home, regional: p.regional!, national: goodPlatform(store, p, 4), endorsements: endorsed && p === a ? [{ by: c.name, region: c.home }] : [] }));
+    const without = runElection({ ...base, parties: stand(false) }).results.regions[c.home].share[a.id];
+    const withIt = runElection({ ...base, parties: stand(true) }).results.regions[c.home].share[a.id];
+    expect(withIt).toBeGreaterThan(without);
+  });
+});
+
+describe("a quick game", () => {
+  it("needs only one law in each area and runs shorter counts", () => {
+    const { store, players } = room(2, 0, { simSec: 300, planSec: 300 });
+    const [a] = players;
+    handle(store, a.id, { type: "settings", quick: true }, 1500, newId);
+    expect(store.room.settings).toMatchObject({ quick: true, simSec: 120 });
+    handle(store, a.id, { type: "start" }, 2000, newId);
+    expect(view(store.room, a.id, 2000).limits).toEqual({ min: 1, max: 2 });
+    const one = { laws: CATEGORIES.map((c) => lawsOf("R", c.id)[3].id), tax: 12, actions: [] };
+    expect(handle(store, a.id, { type: "lock", platform: one }, 2500, newId)).toBeNull();
+    const three = sanitize({ laws: ["R1.1", "R1.2", "R1.3"] }, { round: 1, gold: 60, regions: 2, min: 1, max: 2, rivals: [] });
+    expect(three.laws).toEqual(["R1.1", "R1.2"]);
+  });
+});
+
+describe("endorsing when only bots are left in the race", () => {
+  it("holds the vote briefly so a knocked-out player can choose, then goes ahead", () => {
+    const { store, players } = room(1, 2);
+    const [a] = players;
+    handle(store, a.id, { type: "start" }, 2000, newId);
+    handle(store, a.id, { type: "lock", platform: badPlatform(store, a) }, 3000, newId);
+    const now = runCount(store, 3000);
+    if (store.room.outcome!.kind !== "advance") return; // a bot fell short too: nothing to endorse
+    handle(store, a.id, { type: "next" }, now, newId);
+    expect(a.eliminated).toBe(true);
+    expect(store.room.phase).toBe("planning"); // the bots are ready, but the vote waits
+    expect(store.room.deadline).toBeLessThanOrEqual(now + 20_000);
+    handle(store, a.id, { type: "endorse", id: "" }, now + 3000, newId); // "nobody" is a decision too
+    expect(store.room.phase).toBe("counting");
+
+    // And if the player never answers, the clock starts the vote.
+    const again = room(1, 2);
+    handle(again.store, again.players[0].id, { type: "start" }, 2000, newId);
+    handle(again.store, again.players[0].id, { type: "lock", platform: badPlatform(again.store, again.players[0]) }, 3000, newId);
+    const t = runCount(again.store, 3000);
+    if (again.store.room.outcome!.kind !== "advance") return;
+    handle(again.store, again.players[0].id, { type: "next" }, t, newId);
+    onAlarm(again.store, nextAlarm(again.store.room)!);
+    expect(again.store.room.phase).toBe("counting");
   });
 });

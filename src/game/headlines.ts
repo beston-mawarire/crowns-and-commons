@@ -2,10 +2,10 @@
 // reacting, and every reaction is driven by the real hidden weights, so an attentive
 // player can learn what each group likes.
 
-import { ACTIONS, G, GROUP_KEYS, MODEL } from "./data";
+import { G, GROUP_KEYS, MODEL } from "./data";
 import type { Law } from "./laws";
 import { LAW_BY_ID } from "./laws";
-import { shortfall, type Contender, type StoryFacts } from "./sim";
+import { shortfall, weights, type Contender, type StoryFacts } from "./sim";
 
 export interface Headline {
   text: string;
@@ -29,7 +29,7 @@ const LAW_T = {
   strongGood: [
     "{Actor} in {place} are celebrating the {law}; everyone is talking about {party}",
     "'Finally, someone who means it,' say {actor} in {place} about the {law}",
-    "{Actor} march through {place} with a {party} flag after hearing about the {law}",
+    "{Actor} march through {place} waving {party} flags after hearing about the {law}",
     "Street parties in {place}: {actor} love the {law}",
   ],
   mildGood: [
@@ -119,6 +119,19 @@ const EVENT_FOLLOW = {
   bad: ["As trouble hits, {actor} in {place} ask what {party} ever planned to do about it"],
 };
 
+const ATTACK_T = {
+  strong: ["{party} attacks {rival} over the {law}; {actor} in {place} are listening"],
+  weak: ["{party} attacks {rival} in {place}; {actor} are not very interested"],
+  backfire: ["{party}'s attack on {rival} backfires in {place}: {actor} call it dirty politics"],
+};
+
+const ENDORSE_T = ["{by}, knocked out of the race, tells its supporters in {region} to vote for {party}"];
+
+const HALFTIME_T = {
+  push: ["{party} makes a last-minute appeal to {actor} in {place}"],
+  drop: ["{party} scraps the {law} at the last minute; rivals call it a U-turn"],
+};
+
 const FLAVOUR_T = [
   "A two-headed calf is born in {place}; every party calls it a good sign",
   "Rain in {place}. Turnout among ducks is reported to be high",
@@ -136,16 +149,20 @@ interface Candidate {
   from: number;
   to: number;
   party?: string;
+  /** the law the headline is about, so it can be retired if that law is scrapped at half-time */
+  law?: string;
   make: () => Headline;
 }
 
 export function buildHeadlines(facts: StoryFacts, K: number, perTick: number): Headline[][] {
-  const { input, rng } = facts;
+  const { input, rng, world } = facts;
   const { regions, parties, round } = input;
+  const reactions = input.reactions ?? {};
+  const H = facts.halfAt;
   const pick = <T>(arr: T[]): T => arr[Math.floor(rng() * arr.length)];
   const placeIn = (r: number) => pick([regions[r].capital, ...regions[r].places]);
   const fill = (t: string, v: Record<string, string>) => {
-    let s = t.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+    const s = t.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
   const vars = (p: Contender | undefined, r: number, g: number, extra: Record<string, string> = {}) => {
@@ -160,31 +177,35 @@ export function buildHeadlines(facts: StoryFacts, K: number, perTick: number): H
     const platform = round === 1 ? p.regional : p.national!;
     const where = stands(p);
     const lawSet: Law[] = platform.laws.map((id) => LAW_BY_ID[id]).filter(Boolean);
-    // In round 2 the regional record still gets talked about now and then.
+    // In the national round the regional laws still get talked about now and then.
     const record: Law[] = round === 2 ? p.regional.laws.map((id) => LAW_BY_ID[id]).filter(Boolean) : [];
     const short = shortfall(platform);
 
     for (const [law, scale] of [...lawSet.map((l) => [l, 1] as const), ...record.map((l) => [l, 0.35] as const)]) {
+      const eff = weights(law, world);
+      const mine = scale === 1 ? law.id : undefined;
       for (let g = 0; g < G; g++) {
-        const w = law.w[g];
-        if (w !== 0) {
+        const w = eff.w[g];
+        if (Math.abs(w) >= 0.5) {
           const r = pick(where);
-          const bank = w >= 2 ? LAW_T.strongGood : w === 1 ? LAW_T.mildGood : w === -1 ? LAW_T.mildBad : LAW_T.strongBad;
+          const bank = w >= 1.5 ? LAW_T.strongGood : w > 0 ? LAW_T.mildGood : w > -1.5 ? LAW_T.mildBad : LAW_T.strongBad;
           pool.push({
-            weight: Math.abs(w) * regions[r].mix[g] * 6 * scale,
+            weight: Math.min(3, Math.abs(w)) * regions[r].mix[g] * 6 * scale,
             from: 0,
             to: K - 1,
             party: p.id,
+            law: mine,
             make: () => ({ text: fill(pick(bank), vars(p, r, g, { law: law.name })), kind: w > 0 ? "good" : "bad", p: p.id, at: 0 }),
           });
         }
-        if (law.d[g] < 0 && scale === 1) {
+        if (eff.d[g] < 0 && scale === 1) {
           const r = pick(where);
           pool.push({
-            weight: Math.abs(law.d[g]) * regions[r].mix[g] * 5,
+            weight: Math.min(3, Math.abs(eff.d[g])) * regions[r].mix[g] * 5,
             from: half,
             to: K - 1,
             party: p.id,
+            law: mine,
             make: () => ({ text: fill(pick(LAW_T.downside), vars(p, r, g, { law: law.name, down: law.down })), kind: "bad", p: p.id, at: 0 }),
           });
         }
@@ -196,25 +217,20 @@ export function buildHeadlines(facts: StoryFacts, K: number, perTick: number): H
           from: half,
           to: K - 1,
           party: p.id,
+          law: mine,
           make: () => ({ text: fill(pick(LAW_T.unfunded), vars(p, r, 0, { law: law.name })), kind: "bad", p: p.id, at: 0 }),
         });
       }
     }
 
     for (const c of facts.campaigns[p.id]) {
-      const def = ACTIONS.find((a) => a.id === c.pick.a)!;
       const bank = c.repeat ? REPEAT_T : c.fit >= 1 ? CAMPAIGN_T[c.pick.a].good : c.fit >= 0.3 ? CAMPAIGN_T[c.pick.a].meh : CAMPAIGN_T[c.pick.a].bad;
       pool.push({
         weight: 2.2,
         from: 0,
         to: Math.max(2, Math.floor(K * 0.6)),
         party: p.id,
-        make: () => ({
-          text: fill(pick(bank), vars(p, c.region, c.pick.g, { action: def.name.toLowerCase() })),
-          kind: c.repeat || c.fit < 0.3 ? "bad" : c.fit >= 1 ? "good" : "mixed",
-          p: p.id,
-          at: 0,
-        }),
+        make: () => ({ text: fill(pick(bank), vars(p, c.region, c.pick.g)), kind: c.repeat || c.fit < 0.3 ? "bad" : c.fit >= 1 ? "good" : "mixed", p: p.id, at: 0 }),
       });
     }
 
@@ -248,22 +264,8 @@ export function buildHeadlines(facts: StoryFacts, K: number, perTick: number): H
         from: 0,
         to: K - 1,
         party: p.id,
+        law: f.national.id,
         make: () => ({ text: fill(pick(FRICTION_T), vars(p, r, g, { lawR: f.regional.name, lawN: f.national.name })), kind: "friction", p: p.id, at: 0 }),
-      });
-    }
-
-    // A qualitative read on momentum, late in the count.
-    const t = facts.trend[p.id];
-    const early = t.slice(0, Math.floor(K / 2)).reduce((a, b) => a + b, 0) / Math.max(1, Math.floor(K / 2));
-    const late = t.slice(Math.floor(K / 2)).reduce((a, b) => a + b, 0) / Math.max(1, K - Math.floor(K / 2));
-    if (Math.abs(late - early) > 0.012) {
-      const r = pick(where);
-      pool.push({
-        weight: 3,
-        from: Math.floor(K * 0.6),
-        to: K - 1,
-        party: p.id,
-        make: () => ({ text: fill(pick(late > early ? TREND_T.up : TREND_T.down), vars(p, r, 0)), kind: late > early ? "good" : "bad", p: p.id, at: 0 }),
       });
     }
 
@@ -289,6 +291,59 @@ export function buildHeadlines(facts: StoryFacts, K: number, perTick: number): H
     pool.push({ weight: 0.9, from: 0, to: K - 1, make: () => ({ text: fill(pick(FLAVOUR_T), vars(undefined, r, 0)), kind: "flavour", at: 0 }) });
   }
 
+  // From here on, nothing may draw a random number while the pool is being built. A count is
+  // run twice (see runElection) and the first half must come out the same both times, so
+  // everything that can differ between the two runs is added last and only opens late.
+  for (const a of facts.attacks) {
+    const bank = a.backfired ? ATTACK_T.backfire : a.law ? ATTACK_T.strong : ATTACK_T.weak;
+    pool.push({
+      weight: 3,
+      from: 0,
+      to: Math.max(2, Math.floor(K * 0.6)),
+      party: a.by.id,
+      make: () => ({ text: fill(pick(bank), vars(a.by, a.region, a.g, { rival: a.on.name, law: a.law?.name ?? "" })), kind: a.backfired ? "bad" : "mixed", p: a.by.id, at: 0 }),
+    });
+  }
+  for (const p of parties)
+    for (const e of p.endorsements ?? [])
+      pool.push({
+        weight: 3,
+        from: 0,
+        to: Math.max(2, Math.floor(K / 2)),
+        party: p.id,
+        make: () => ({ text: fill(pick(ENDORSE_T), vars(p, e.region, 0, { by: e.by })), kind: "good", p: p.id, at: 0 }),
+      });
+  for (const p of parties) {
+    const where = stands(p);
+    const t = facts.trend[p.id];
+    const mid = Math.floor(K / 2);
+    const early = t.slice(0, mid).reduce((a, b) => a + b, 0) / Math.max(1, mid);
+    const late = t.slice(mid).reduce((a, b) => a + b, 0) / Math.max(1, K - mid);
+    if (Math.abs(late - early) > 0.012)
+      pool.push({
+        weight: 3,
+        from: Math.max(H, Math.floor(K * 0.6)),
+        to: K - 1,
+        party: p.id,
+        make: () => ({ text: fill(pick(late > early ? TREND_T.up : TREND_T.down), vars(p, pick(where), 0)), kind: late > early ? "good" : "bad", p: p.id, at: 0 }),
+      });
+  }
+
+  // Half-time moves always make the news, straight after the restart.
+  const halfTime: (() => Headline)[] = [];
+  for (const p of parties) {
+    const move = reactions[p.id];
+    if (move?.kind === "push") halfTime.push(() => ({ text: fill(pick(HALFTIME_T.push), vars(p, round === 1 ? p.home : move.r ?? p.home, move.g)), kind: "mixed", p: p.id, at: 0 }));
+    if (move?.kind === "drop" && LAW_BY_ID[move.law])
+      halfTime.push(() => ({ text: fill(pick(HALFTIME_T.drop), vars(p, pick(stands(p)), 0, { law: LAW_BY_ID[move.law].name })), kind: "mixed", p: p.id, at: 0 }));
+  }
+
+  /** A law scrapped at half-time stops making news about itself. */
+  const retired = (c: Candidate, k: number) => {
+    const move = c.party ? reactions[c.party] : null;
+    return k >= H && !!c.law && move?.kind === "drop" && move.law === c.law;
+  };
+
   // Deal the pool out across the counting periods, spreading attention between parties.
   const out: Headline[][] = [];
   const shown: Record<string, number> = {};
@@ -300,14 +355,15 @@ export function buildHeadlines(facts: StoryFacts, K: number, perTick: number): H
       const text = fill(pick(ev.region === null ? ev.def.national : ev.def.regional), { region: regions[r].name, capital: regions[r].capital });
       list.push({ text: "Breaking news: " + text, kind: "event", at: 0 });
     }
+    if (k === H) for (const make of halfTime) list.push(make());
     while (list.length < perTick) {
-      const open = pool.filter((c) => c.from <= k && c.to >= k);
+      const open = pool.filter((c) => c.from <= k && c.to >= k && !retired(c, k));
       if (!open.length) break;
       const least = Math.min(...parties.map((p) => shown[p.id] ?? 0));
-      const weights = open.map((c) => c.weight * (c.party && (shown[c.party] ?? 0) > least + 1 ? 0.25 : 1));
-      let roll = rng() * weights.reduce((a, b) => a + b, 0);
+      const weights2 = open.map((c) => c.weight * (c.party && (shown[c.party] ?? 0) > least + 1 ? 0.25 : 1));
+      let roll = rng() * weights2.reduce((a, b) => a + b, 0);
       let idx = 0;
-      while (idx < open.length - 1 && (roll -= weights[idx]) > 0) idx++;
+      while (idx < open.length - 1 && (roll -= weights2[idx]) > 0) idx++;
       const chosen = open[idx];
       pool.splice(pool.indexOf(chosen), 1);
       if (chosen.party) shown[chosen.party] = (shown[chosen.party] ?? 0) + 1;

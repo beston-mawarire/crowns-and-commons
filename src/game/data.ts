@@ -46,7 +46,34 @@ export const RULES = {
   defaultSimSec: 300,
   defaultPlanSec: 300,
   ticks: 10,
+  /** Seconds players get for their one half-time move, and for coalition talks. */
+  halfTimeSec: 25,
+  coalitionSec: 45,
+  /** One council seat per this many voters; the leading party in a region gets bonus seats. */
+  votersPerSeat: 10000,
+  winnerBonusSeats: 2,
+  /** Gold for the national campaign: a base plus donations that follow your regional result. */
+  donationBase: 20,
+  donationPerShare: 50,
 } as const;
+
+/** How many laws a party picks in each area, and how platform strength is scaled. */
+export function limits(quick: boolean): { min: number; max: number; norm: number } {
+  return quick ? { min: 1, max: 2, norm: 9 } : { min: RULES.minLawsPerCategory, max: RULES.maxLawsPerCategory, norm: 18 };
+}
+
+// ---------------------------------------------------------------- this year's big issue
+
+/** One is drawn for every match. Laws in its two areas count for more with every group. */
+export const ISSUES = [
+  { name: "Food shortage", blurb: "Two bad harvests in a row. Food and help for the poor are on everyone's mind.", cats: [4, 5] },
+  { name: "Fear of war", blurb: "There are rumours of war. People care most about who is in charge and how order is kept.", cats: [7, 8] },
+  { name: "Trade boom", blurb: "Business is booming. Everyone is arguing about who should own and sell what.", cats: [1, 4] },
+  { name: "Tax anger", blurb: "People are fed up with paying. Taxes and wages are the talk of every town.", cats: [2, 3] },
+  { name: "Land disputes", blurb: "Fights over fields and fences everywhere. Land and work matter most this year.", cats: [6, 3] },
+  { name: "Religious revival", blurb: "The churches are full. Religion and care for the poor are what people talk about.", cats: [9, 5] },
+  { name: "Corruption scandal", blurb: "Officials were caught stealing. People want to know who governs and where the taxes go.", cats: [7, 2] },
+];
 
 // ---------------------------------------------------------------- campaign actions
 
@@ -55,6 +82,8 @@ export interface ActionDef {
   name: string;
   cost: number;
   desc: string;
+  /** Only available in the national round. */
+  national?: boolean;
 }
 
 /** Public part of the action catalogue. */
@@ -65,6 +94,7 @@ export const ACTIONS: ActionDef[] = [
   { id: "lobby", name: "Private dinner with the powerful", cost: 20, desc: "A quiet word and a good meal with people who have influence." },
   { id: "relief", name: "Free food handout", cost: 25, desc: "Bread, blankets and firewood, handed out in your party's colours." },
   { id: "feast", name: "Public feast", cost: 30, desc: "Free food, free drink and music all night." },
+  { id: "attack", name: "Attack on a rival", cost: 20, desc: "Tell one group, loudly, what is wrong with another party. It can backfire.", national: true },
 ];
 
 /** HIDDEN: base strength of each action and how well it lands with each group. */
@@ -75,6 +105,8 @@ export const ACTION_HIDDEN: Record<string, { b: number; fit: W; sat?: number; ba
   lobby: { b: 0.4, fit: [-0.5, 1.0, 0.2, 0.8, 0.8, 1.5], backlash: { Co: -0.1 } },
   relief: { b: 0.5, fit: [1.5, 0.2, 0.8, 1.0, 0.8, -0.3], sat: 8 },
   feast: { b: 0.6, fit: [1.2, 0.8, 1.0, -0.2, 1.4, 0.6], sat: 6 },
+  // Attacks work differently (see MODEL.attack*); this entry only keeps the table complete.
+  attack: { b: 0, fit: [0, 0, 0, 0, 0, 0] },
 };
 
 // ---------------------------------------------------------------- vote model constants (HIDDEN)
@@ -126,6 +158,20 @@ export const MODEL = {
   /** ...and every group marks the party down by this much (soldiers twice over). */
   unfundedPenalty: 0.35,
   eventChance: 0.4,
+  /** Laws in the two areas of this year's big issue count this many times over. */
+  issueMult: 2,
+  /** Each match, every group's taste in every area shifts a little along the spectrum. */
+  tiltMax: 0.7,
+  /** Half-time: a last-minute appeal to one group, or the cost of scrapping a law. */
+  pushEffect: 0.3,
+  uturnPenalty: 0.06,
+  /** Attacks: full strength when the rival has a law the group dislikes, weak otherwise. */
+  attackBase: 0.35,
+  attackWeakFactor: 0.4,
+  attackBackfireChance: 0.3,
+  attackBackfireCost: 0.2,
+  /** A knocked-out party's endorsement, felt by every group in its old region. */
+  endorseEffect: 0.25,
 };
 
 // ---------------------------------------------------------------- random events (HIDDEN effects)

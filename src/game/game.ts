@@ -2,14 +2,14 @@
 // the Durable Object (src/room.ts) feeds messages and alarms in, and sends views out.
 // That keeps every rule testable without a server.
 
-import { ACTIONS, BOT_NAMES, CATEGORIES, COLORS, GROUPS, MODEL, RULES } from "./data";
+import { ACTIONS, BOT_NAMES, CATEGORIES, COLORS, GROUPS, ISSUES, MODEL, RULES, limits } from "./data";
 import type { Headline } from "./headlines";
 import { LAW_BY_ID, publicCatalogue } from "./laws";
-import { actionCost, clerk, emptyPlatform, problem, randomLean, sanitize } from "./rules";
-import { lawReport, makeRegions, mulberry32, runElection, shuffle } from "./sim";
-import type { Contender, PaintRegion, Platform, Region, Results, Timeline } from "./sim";
+import { actionCost, botReaction, clerk, compatibility, emptyPlatform, problem, randomLean, sanitize, sanitizeReaction } from "./rules";
+import { NEUTRAL, allocateSeats, lawReport, makeRegions, makeWorld, mulberry32, runElection, shuffle } from "./sim";
+import type { Contender, ElectionInput, PaintRegion, Platform, Reaction, Region, Results, Seats, Timeline, World } from "./sim";
 
-export type Phase = "lobby" | "planning" | "counting" | "results" | "final";
+export type Phase = "lobby" | "planning" | "counting" | "coalition" | "results" | "final";
 
 export interface Player {
   id: string;
@@ -28,6 +28,15 @@ export interface Player {
   qualified: boolean;
   eliminated: boolean;
   lean?: number[];
+  /** Half-time: the move chosen, and whether the player has decided (a pass counts). */
+  reaction: Reaction | null;
+  reacted: boolean;
+  /** A knocked-out party may back one party still in the race; `endorsed` means it has decided. */
+  endorse: string | null;
+  endorsed: boolean;
+  /** Coalition talks: the partner chosen, and whether the player has decided. */
+  ally: string | null;
+  allied: boolean;
 }
 
 export interface TickerItem extends Headline {
@@ -39,6 +48,8 @@ export interface TickerItem extends Headline {
 export interface Outcome {
   kind: "none" | "single" | "advance" | "national";
   winner: string | null;
+  /** The winner's coalition partner, if it governs with one. */
+  partner: string | null;
   ranking: string[];
 }
 
@@ -52,16 +63,19 @@ export interface Room {
   round: 1 | 2;
   attempt: number;
   hostId: string;
-  settings: { simSec: number; planSec: number };
+  settings: { simSec: number; planSec: number; quick: boolean };
   players: Player[];
   regions: Region[];
+  world: World | null;
   deadline: number | null;
-  count: { startedAt: number; periodMs: number; released: number; total: number } | null;
+  count: { startedAt: number; periodMs: number; released: number; total: number; half: { until: number; done: boolean } | null } | null;
+  countSeed: number;
   paint: PaintRegion[] | null;
   ticker: TickerItem[];
   nextHeadline: number;
   results1: Results | null;
   results2: Results | null;
+  seats: Seats | null;
   outcome: Outcome | null;
 }
 
@@ -73,6 +87,8 @@ export interface Store {
 export type NewId = () => string;
 
 const IDLE_MS = 3 * 60 * 60 * 1000;
+/** The count pauses for half-time after this many of its ten periods. */
+const HALF = Math.floor(RULES.ticks / 2);
 
 // ---------------------------------------------------------------- lobby
 
@@ -87,16 +103,19 @@ export function createRoom(code: string, seed: number, now: number): Room {
     round: 1,
     attempt: 1,
     hostId: "",
-    settings: { simSec: RULES.defaultSimSec, planSec: RULES.defaultPlanSec },
+    settings: { simSec: RULES.defaultSimSec, planSec: RULES.defaultPlanSec, quick: false },
     players: [],
     regions: [],
+    world: null,
     deadline: null,
     count: null,
+    countSeed: 0,
     paint: null,
     ticker: [],
     nextHeadline: 1,
     results1: null,
     results2: null,
+    seats: null,
     outcome: null,
   };
 }
@@ -104,24 +123,10 @@ export function createRoom(code: string, seed: number, now: number): Room {
 const cleanName = (s: unknown) => String(s ?? "").replace(/[\u0000-\u001f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 28);
 const freeColor = (room: Room) => COLORS.find((c) => !room.players.some((p) => p.color === c.id))?.id ?? COLORS[0].id;
 
+const FRESH = { home: -1, gold: 0, locked: false, hasten: false, regional: null, national: null, qualified: false, eliminated: false, reaction: null, reacted: false, endorse: null, endorsed: false, ally: null, allied: false };
+
 function newPlayer(room: Room, newId: NewId, name: string, bot: boolean): Player {
-  return {
-    id: newId(),
-    token: newId(),
-    name,
-    color: freeColor(room),
-    bot,
-    connected: !bot,
-    home: -1,
-    gold: 0,
-    locked: false,
-    hasten: false,
-    draft: emptyPlatform(),
-    regional: null,
-    national: null,
-    qualified: false,
-    eliminated: false,
-  };
+  return { id: newId(), token: newId(), name, color: freeColor(room), bot, connected: !bot, draft: emptyPlatform(), ...FRESH };
 }
 
 const PARTY_WORDS = ["Oak", "Lantern", "Harrow", "Anvil", "Heron", "Thistle", "Quill", "Barley"];
@@ -140,6 +145,9 @@ export function join(room: Room, newId: NewId, name?: string): Player | string {
 export const byToken = (room: Room, token: unknown) => (typeof token === "string" ? room.players.find((p) => !p.bot && p.token === token) : undefined);
 const byId = (room: Room, id: string) => room.players.find((p) => p.id === id);
 const active = (room: Room) => room.players.filter((p) => !p.eliminated);
+/** Active human players who are here to be waited for. */
+const present = (room: Room) => active(room).filter((p) => !p.bot && p.connected);
+const world = (room: Room) => room.world ?? NEUTRAL;
 
 /** The host runs the room; if the host has dropped out, anyone still here may. */
 function mayHost(room: Room, playerId: string): boolean {
@@ -172,6 +180,11 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
       if (!mayHost(room, playerId)) return "Only the host can change the settings.";
       if ((RULES.simChoices as readonly number[]).includes(msg.simSec)) room.settings.simSec = msg.simSec;
       if ((RULES.planChoices as readonly number[]).includes(msg.planSec)) room.settings.planSec = msg.planSec;
+      if (typeof msg.quick === "boolean" && msg.quick !== room.settings.quick) {
+        room.settings.quick = msg.quick;
+        // A quick game comes with shorter counts, a full game with the full five minutes.
+        room.settings.simSec = msg.quick ? 120 : RULES.defaultSimSec;
+      }
       return null;
     }
     case "addBot": {
@@ -227,12 +240,37 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
       lockEveryone(store, now);
       return null;
     }
+    case "endorse": {
+      if (room.phase !== "planning" || room.round !== 2 || !me.eliminated) return "Only a knocked-out party can endorse, and only before the national vote.";
+      const target = byId(room, String(msg.id));
+      me.endorse = target && !target.eliminated ? target.id : null;
+      me.endorsed = true;
+      maybeStartCount(store, now);
+      return null;
+    }
+    case "react": {
+      const half = room.count?.half;
+      if (room.phase !== "counting" || !half || half.done || me.eliminated) return null;
+      const current = room.round === 1 ? me.regional : me.national;
+      me.reaction = current ? sanitizeReaction(msg.reaction, current, room.round, room.regions.length) : null;
+      me.reacted = true;
+      if (present(room).every((p) => p.reacted)) resolveHalf(store, now);
+      return null;
+    }
     case "hasten": {
       if (room.phase !== "counting") return null;
       me.hasten = true;
       const humans = room.players.filter((p) => !p.bot && p.connected);
       const voters = humans.some((p) => !p.eliminated) ? humans.filter((p) => !p.eliminated) : humans;
       if (voters.length && voters.every((p) => p.hasten)) finishCount(store, now);
+      return null;
+    }
+    case "ally": {
+      if (room.phase !== "coalition" || me.eliminated) return null;
+      const target = byId(room, String(msg.id));
+      me.ally = target && !target.eliminated && target !== me ? target.id : null;
+      me.allied = true;
+      if (present(room).every((p) => p.allied)) resolveCoalition(store);
       return null;
     }
     case "next": {
@@ -253,7 +291,17 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
   }
 }
 
-const planContext = (room: Room, p: Player) => ({ round: room.round, gold: p.gold, regions: room.regions.length });
+function planContext(room: Room, p: Player) {
+  const lim = limits(room.settings.quick);
+  return {
+    round: room.round,
+    gold: p.gold,
+    regions: room.regions.length,
+    min: lim.min,
+    max: lim.max,
+    rivals: room.round === 2 ? active(room).filter((q) => q !== p).map((q) => q.id) : [],
+  };
+}
 
 // ---------------------------------------------------------------- flow
 
@@ -263,12 +311,12 @@ function startMatch(store: Store, now: number) {
   const rng = mulberry32(room.seed + room.match * 7919 + (now % 100000));
   room.regions = makeRegions(room.players.length, rng);
   const homes = shuffle(room.players.map((_, i) => i), rng);
-  room.players.forEach((p, i) => {
-    Object.assign(p, { home: homes[i], gold: RULES.startGold, regional: null, national: null, qualified: false, eliminated: false, draft: emptyPlatform() });
-  });
+  room.world = makeWorld(rng);
+  room.players.forEach((p, i) => Object.assign(p, FRESH, { home: homes[i], gold: RULES.startGold, draft: emptyPlatform() }));
   room.round = 1;
   room.attempt = 1;
   room.results1 = room.results2 = null;
+  room.seats = null;
   room.outcome = null;
   beginPlanning(store, now);
 }
@@ -282,17 +330,17 @@ function beginPlanning(store: Store, now: number) {
   room.ticker = [];
   store.timeline = null;
   for (const p of room.players) {
-    p.locked = false;
-    p.hasten = false;
+    Object.assign(p, { locked: false, hasten: false, reaction: null, reacted: false });
     if (p.bot && !p.eliminated) {
-      p.draft = botPlatform(room, p, now);
+      p.draft = clerkFor(room, p, now, true);
       p.locked = true;
     }
   }
   maybeStartCount(store, now);
 }
 
-function botPlatform(room: Room, p: Player, now: number): Platform {
+/** The clerk writes a platform: a whole one for a bot, or just the gaps for a player who ran out of time. */
+function clerkFor(room: Room, p: Player, now: number, bot: boolean): Platform {
   const rng = mulberry32(room.seed + room.match * 31 + room.attempt * 101 + room.round * 7 + p.home * 13 + (now % 9973));
   return clerk({
     round: room.round,
@@ -301,14 +349,26 @@ function botPlatform(room: Room, p: Player, now: number): Platform {
     gold: p.gold,
     rng,
     noise: 5,
-    lean: p.lean,
-    full: true,
+    lean: bot ? p.lean : undefined,
+    keep: bot ? undefined : sanitize(p.draft, planContext(room, p)),
+    full: bot,
+    world: world(room),
+    quick: room.settings.quick,
+    rivals: room.round === 2 ? active(room).filter((q) => q !== p).map((q) => ({ id: q.id, laws: q.regional?.laws ?? [] })) : [],
   });
 }
 
+/** How long the count waits for knocked-out players to endorse once everyone else is ready. */
+const ENDORSE_WAIT_MS = 20_000;
+
 function maybeStartCount(store: Store, now: number) {
-  const players = active(store.room);
-  if (players.length && players.every((p) => p.locked)) startCount(store, now);
+  const { room } = store;
+  const players = active(room);
+  if (!players.length || !players.some((p) => p.locked) || !players.every((p) => p.locked)) return;
+  // Knocked-out players who are here get a short while to back someone before the vote.
+  const undecided = room.round === 2 && room.players.some((p) => p.eliminated && !p.bot && p.connected && !p.endorsed);
+  if (!undecided) return startCount(store, now);
+  if (!room.deadline || room.deadline > now + ENDORSE_WAIT_MS) room.deadline = now + ENDORSE_WAIT_MS;
 }
 
 /** Time is up: whatever anyone has chosen stands, and a clerk fills in the rest. */
@@ -316,65 +376,102 @@ function lockEveryone(store: Store, now: number) {
   const { room } = store;
   for (const p of active(room)) {
     if (p.locked) continue;
-    const ctx = planContext(room, p);
-    const kept = sanitize(p.draft, ctx);
-    p.draft = clerk({
-      round: room.round,
-      regions: room.round === 1 ? [room.regions[p.home]] : room.regions,
-      home: room.round === 1 ? 0 : p.home,
-      gold: p.gold,
-      rng: mulberry32(room.seed + p.home * 17 + (now % 9973)),
-      noise: 5,
-      keep: kept,
-      full: false,
-    });
+    p.draft = clerkFor(room, p, now, false);
     p.locked = true;
   }
   startCount(store, now);
 }
 
+function electionInput(room: Room, reactions?: Record<string, Reaction | null>): ElectionInput {
+  const periodMs = (room.settings.simSec * 1000) / RULES.ticks;
+  const parties: Contender[] = active(room).map((p) => ({
+    id: p.id,
+    name: p.name,
+    home: p.home,
+    regional: p.regional!,
+    national: p.national ?? undefined,
+    endorsements: room.round === 2 ? room.players.filter((e) => e.eliminated && e.endorse === p.id).map((e) => ({ by: e.name, region: e.home })) : undefined,
+  }));
+  return {
+    round: room.round,
+    regions: room.regions,
+    parties,
+    seed: room.countSeed,
+    q0: MODEL.q0 - MODEL.q0RestartStep * (room.attempt - 1) - (room.round === 2 ? MODEL.q0NationalShift : 0),
+    world: world(room),
+    norm: limits(room.settings.quick).norm,
+    ticks: RULES.ticks,
+    headlinesPerTick: Math.min(5, Math.max(1, Math.round(periodMs / 6000))),
+    reactions,
+    halfAt: HALF,
+  };
+}
+
 function startCount(store: Store, now: number) {
   const { room } = store;
-  const K = RULES.ticks;
-  const parties: Contender[] = [];
   for (const p of active(room)) {
     if (room.round === 1) p.regional = p.draft;
     else p.national = p.draft;
     p.gold -= actionCost(p.draft.actions);
-    parties.push({ id: p.id, name: p.name, home: p.home, regional: p.regional!, national: p.national ?? undefined });
   }
-  const periodMs = (room.settings.simSec * 1000) / K;
-  store.timeline = runElection({
-    round: room.round,
-    regions: room.regions,
-    parties,
-    seed: (room.seed + room.match * 104729 + room.attempt * 1299709 + room.round * 15485863 + (now % 1000003)) >>> 0,
-    q0: MODEL.q0 - MODEL.q0RestartStep * (room.attempt - 1) - (room.round === 2 ? MODEL.q0NationalShift : 0),
-    ticks: K,
-    headlinesPerTick: Math.min(5, Math.max(1, Math.round(periodMs / 6000))),
-  });
+  room.countSeed = (room.seed + room.match * 104729 + room.attempt * 1299709 + room.round * 15485863 + (now % 1000003)) >>> 0;
+  store.timeline = runElection(electionInput(room));
   room.phase = "counting";
   room.deadline = null;
-  room.count = { startedAt: now + 1500, periodMs, released: 0, total: K };
+  room.count = { startedAt: now + 1500, periodMs: (room.settings.simSec * 1000) / RULES.ticks, released: 0, total: RULES.ticks, half: null };
   room.paint = store.timeline.paints[0];
   room.ticker = [];
 }
 
-/** Release whatever part of the count is due. */
+/** Release whatever part of the count is due, stopping for half-time on the way. */
 function advanceCount(store: Store, now: number) {
-  const { room, timeline } = store;
+  const { room } = store;
   const c = room.count;
-  if (!c || !timeline) return;
+  if (!c || !store.timeline) return;
   while (room.phase === "counting" && now >= c.startedAt + c.released * c.periodMs - 100) {
+    if (c.half && !c.half.done) return;
+    if (c.released === HALF && !c.half) {
+      room.paint = store.timeline.paints[HALF];
+      startHalf(store, now);
+      continue;
+    }
     const i = c.released++;
-    room.paint = timeline.paints[i];
+    room.paint = store.timeline.paints[i];
     if (i < c.total) {
-      for (const h of timeline.headlines[i] ?? []) room.ticker.push({ ...h, id: room.nextHeadline++, t: Math.round(c.startedAt + (i + h.at) * c.periodMs) });
+      for (const h of store.timeline.headlines[i] ?? []) room.ticker.push({ ...h, id: room.nextHeadline++, t: Math.round(c.startedAt + (i + h.at) * c.periodMs) });
       room.ticker = room.ticker.slice(-60);
     } else {
       finishCount(store, now);
     }
   }
+}
+
+/** Half-time: the count stops and every party still standing gets one move. */
+function startHalf(store: Store, now: number) {
+  const { room } = store;
+  room.count!.half = { until: now + RULES.halfTimeSec * 1000, done: false };
+  for (const p of room.players) Object.assign(p, { reaction: null, reacted: false });
+  if (!present(room).length) resolveHalf(store, now);
+}
+
+/** Everyone has moved (or time ran out): work out the second half with those moves in it. */
+function resolveHalf(store: Store, now: number) {
+  const { room } = store;
+  const c = room.count;
+  if (!c?.half || c.half.done) return;
+  const reactions: Record<string, Reaction | null> = {};
+  for (const p of active(room)) {
+    if (p.bot) {
+      const current = room.round === 1 ? p.regional! : p.national!;
+      p.reaction = botReaction({ round: room.round, current, regions: room.regions, home: p.home, lean: p.lean, world: world(room), rng: mulberry32(room.countSeed + p.home * 97) });
+    }
+    reactions[p.id] = p.reaction;
+  }
+  if (Object.values(reactions).some(Boolean)) store.timeline = runElection(electionInput(room, reactions));
+  c.half.done = true;
+  // Pick the clock up where it stopped.
+  c.startedAt = now - HALF * c.periodMs;
+  advanceCount(store, now);
 }
 
 function finishCount(store: Store, now: number) {
@@ -387,6 +484,14 @@ function finishCount(store: Store, now: number) {
   // Anything not yet shown is no longer news.
   room.ticker = room.ticker.filter((h) => h.t <= now);
   const standing = active(room);
+  // A law scrapped at half-time comes off the record.
+  for (const p of standing) {
+    const after = timeline.platformsAfter[p.id];
+    if (!after) continue;
+    if (room.round === 1) p.regional = after;
+    else p.national = after;
+  }
+  store.timeline = null;
 
   if (room.round === 1) {
     room.results1 = res;
@@ -394,23 +499,83 @@ function finishCount(store: Store, now: number) {
     const through = standing.filter((p) => p.qualified);
     const ranking = standing.slice().sort((a, b) => res.parties[b.id].share - res.parties[a.id].share).map((p) => p.id);
     if (through.length === 0) {
-      room.outcome = { kind: "none", winner: null, ranking };
+      room.outcome = { kind: "none", winner: null, partner: null, ranking };
       room.phase = "results";
     } else if (through.length === 1) {
-      room.outcome = { kind: "single", winner: through[0].id, ranking };
+      room.outcome = { kind: "single", winner: through[0].id, partner: null, ranking };
       room.phase = "final";
     } else {
-      room.outcome = { kind: "advance", winner: null, ranking };
+      room.outcome = { kind: "advance", winner: null, partner: null, ranking };
       room.phase = "results";
     }
-  } else {
-    room.results2 = res;
-    const ranking = standing.slice().sort((a, b) => res.parties[b.id].share - res.parties[a.id].share).map((p) => p.id);
-    room.outcome = { kind: "national", winner: ranking[0], ranking };
+    return;
+  }
+
+  room.results2 = res;
+  const seats = (room.seats = allocateSeats(res, room.regions));
+  const order = bySeats(room, standing.map((p) => p.id));
+  // With three or more parties and nobody holding more than half the council, they must talk.
+  if (standing.length >= 3 && seats.total[order[0]] * 2 <= seats.all) startCoalition(store, now);
+  else {
+    room.outcome = { kind: "national", winner: order[0], partner: null, ranking: order };
     room.phase = "final";
   }
-  store.timeline = null;
 }
+
+const bySeats = (room: Room, ids: string[]) =>
+  ids.slice().sort((a, b) => room.seats!.total[b] - room.seats!.total[a] || room.results2!.parties[b].votes - room.results2!.parties[a].votes);
+
+// ---------------------------------------------------------------- coalition talks
+
+function startCoalition(store: Store, now: number) {
+  const { room } = store;
+  room.phase = "coalition";
+  room.deadline = now + RULES.coalitionSec * 1000;
+  const standing = active(room);
+  for (const p of standing) {
+    p.ally = null;
+    p.allied = false;
+    if (!p.bot) continue;
+    // A bot teams up with whoever's laws are most like its own, if anyone's are.
+    let best: Player | null = null;
+    let bestScore = 0;
+    for (const q of standing) {
+      if (q === p) continue;
+      const score = compatibility(p, q, world(room));
+      if (score > bestScore) [best, bestScore] = [q, score];
+    }
+    p.ally = best?.id ?? null;
+    p.allied = true;
+  }
+  if (!present(room).length) resolveCoalition(store);
+}
+
+/** Two parties that chose each other govern together. The biggest bloc wins. */
+function resolveCoalition(store: Store) {
+  const { room } = store;
+  if (room.phase !== "coalition") return;
+  const seats = room.seats!;
+  const standing = active(room);
+  const blocs: Player[][] = [];
+  const taken = new Set<string>();
+  for (const p of standing) {
+    if (taken.has(p.id)) continue;
+    const q = p.ally ? standing.find((x) => x.id === p.ally && x.ally === p.id && !taken.has(x.id)) : undefined;
+    const bloc = q ? [p, q] : [p];
+    for (const m of bloc) taken.add(m.id);
+    blocs.push(bloc);
+  }
+  const size = (b: Player[]) => b.reduce((a, m) => a + seats.total[m.id], 0);
+  const votes = (b: Player[]) => b.reduce((a, m) => a + room.results2!.parties[m.id].votes, 0);
+  const winners = blocs.reduce((a, b) => (size(b) > size(a) || (size(b) === size(a) && votes(b) > votes(a)) ? b : a));
+  const [leader, partner] = bySeats(room, winners.map((m) => m.id));
+  const rest = bySeats(room, standing.filter((p) => !winners.includes(p)).map((p) => p.id));
+  room.outcome = { kind: "national", winner: leader, partner: partner ?? null, ranking: [leader, ...(partner ? [partner] : []), ...rest] };
+  room.phase = "final";
+  room.deadline = null;
+}
+
+// ---------------------------------------------------------------- between rounds
 
 function restartRegional(store: Store, now: number) {
   const { room } = store;
@@ -434,7 +599,21 @@ function startNational(store: Store, now: number) {
   for (const p of room.players) {
     p.eliminated = !p.qualified;
     p.draft = emptyPlatform();
-    if (!p.eliminated) p.gold += RULES.roundIncome;
+    p.endorse = null;
+    p.endorsed = false;
+    // Donations follow success: a better regional result fills the war chest for the national campaign.
+    if (!p.eliminated) p.gold += RULES.donationBase + Math.round(room.results1!.parties[p.id].share * RULES.donationPerShare);
+  }
+  // A knocked-out bot backs whichever remaining party is most like it.
+  for (const p of room.players) {
+    if (!p.eliminated || !p.bot) continue;
+    let best: Player | null = null;
+    let bestScore = 0;
+    for (const q of active(room)) {
+      const score = compatibility(p, q, world(room));
+      if (score > bestScore) [best, bestScore] = [q, score];
+    }
+    p.endorse = best?.id ?? null;
   }
   beginPlanning(store, now);
 }
@@ -445,23 +624,26 @@ function backToLobby(store: Store) {
   room.round = 1;
   room.attempt = 1;
   room.regions = [];
+  room.world = null;
   room.deadline = null;
   room.count = null;
   room.paint = null;
   room.ticker = [];
   room.results1 = room.results2 = null;
+  room.seats = null;
   room.outcome = null;
   store.timeline = null;
-  for (const p of room.players)
-    Object.assign(p, { home: -1, gold: 0, locked: false, hasten: false, draft: emptyPlatform(), regional: null, national: null, qualified: false, eliminated: false });
+  for (const p of room.players) Object.assign(p, FRESH, { draft: emptyPlatform() });
 }
 
 // ---------------------------------------------------------------- time
 
+const halfPending = (room: Room) => !!room.count?.half && !room.count.half.done;
+
 /** When the room next needs waking, or null. */
 export function nextAlarm(room: Room): number | null {
-  if (room.phase === "planning" && room.deadline) return room.deadline;
-  if (room.phase === "counting" && room.count) return room.count.startedAt + room.count.released * room.count.periodMs;
+  if ((room.phase === "planning" || room.phase === "coalition") && room.deadline) return room.deadline;
+  if (room.phase === "counting" && room.count) return halfPending(room) ? room.count.half!.until : room.count.startedAt + room.count.released * room.count.periodMs;
   return room.touchedAt + IDLE_MS;
 }
 
@@ -473,7 +655,13 @@ export function onAlarm(store: Store, now: number): "expire" | null {
     return null;
   }
   if (room.phase === "counting") {
-    advanceCount(store, now);
+    if (halfPending(room)) {
+      if (now >= room.count!.half!.until - 100) resolveHalf(store, now);
+    } else advanceCount(store, now);
+    return null;
+  }
+  if (room.phase === "coalition") {
+    if (room.deadline && now >= room.deadline - 100) resolveCoalition(store);
     return null;
   }
   return now >= room.touchedAt + IDLE_MS - 100 ? "expire" : null;
@@ -509,8 +697,10 @@ export function welcome(player: Player) {
 export function view(room: Room, playerId: string, now: number) {
   const me = byId(room, playerId)!;
   const showRegional = room.results1 !== null;
-  const showNational = room.phase === "final" && room.results2 !== null;
+  const showNational = (room.phase === "final" || room.phase === "coalition") && room.results2 !== null;
   const final = room.phase === "final";
+  const lim = limits(room.settings.quick);
+  const issue = room.world && room.world.issue >= 0 ? ISSUES[room.world.issue] : null;
 
   let report: Record<string, { best: string[]; worst: string[] }> | null = null;
   let reveal: Record<string, string> | null = null;
@@ -520,7 +710,7 @@ export function view(room: Room, playerId: string, now: number) {
     for (const p of room.players) {
       const ids = [...(p.regional?.laws ?? []), ...(p.national?.laws ?? [])];
       if (!ids.length) continue;
-      const scored = lawReport(ids, room.round === 2 && p.national ? room.regions : [room.regions[p.home]]);
+      const scored = lawReport(ids, room.round === 2 && p.national ? room.regions : [room.regions[p.home]], world(room));
       report[p.id] = { best: scored.slice(0, 3).map((s) => s.id), worst: scored.slice(-3).reverse().map((s) => s.id) };
       for (const id of ids) reveal[id] = LAW_BY_ID[id].down;
     }
@@ -535,6 +725,8 @@ export function view(room: Room, playerId: string, now: number) {
     attempt: room.attempt,
     hostId: room.hostId,
     settings: room.settings,
+    limits: { min: lim.min, max: lim.max },
+    issue: issue ? { name: issue.name, blurb: issue.blurb, cats: issue.cats } : null,
     you: {
       id: me.id,
       gold: me.gold,
@@ -545,6 +737,11 @@ export function view(room: Room, playerId: string, now: number) {
       eliminated: me.eliminated,
       qualified: me.qualified,
       mayHost: mayHost(room, playerId),
+      reacted: me.reacted,
+      endorse: me.endorse,
+      endorsed: me.endorsed,
+      ally: me.ally,
+      allied: me.allied,
     },
     players: room.players.map((p) => ({
       id: p.id,
@@ -556,6 +753,9 @@ export function view(room: Room, playerId: string, now: number) {
       home: p.home,
       qualified: p.qualified,
       eliminated: p.eliminated,
+      // Whether someone has decided is public; what they decided is not.
+      reacted: p.bot || p.reacted,
+      allied: p.allied,
       regional: showRegional || p === me ? p.regional : null,
       national: showNational || p === me ? p.national : null,
     })),
@@ -569,12 +769,13 @@ export function view(room: Room, playerId: string, now: number) {
       mood: r.sat.map(mood),
     })),
     deadline: room.deadline,
-    count: room.count,
+    count: room.count ? { startedAt: room.count.startedAt, periodMs: room.count.periodMs, released: room.count.released, total: room.count.total, half: halfPending(room) ? room.count.half!.until : null } : null,
     // While votes are still coming in the map is deliberately coarse: no exact numbers leak.
     paint: room.phase === "counting" && room.paint ? room.paint.map(coarse) : room.paint,
     ticker: room.ticker,
     results1: room.results1,
     results2: room.results2,
+    seats: room.seats,
     outcome: room.outcome,
     report,
     reveal,

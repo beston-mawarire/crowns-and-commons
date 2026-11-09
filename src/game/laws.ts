@@ -17,6 +17,8 @@ export interface Law {
   tier: "R" | "N";
   cat: number;
   pos: number;
+  /** Position along the area's spectrum, 0..1. */
+  spec: number;
   name: string;
   desc: string;
   w: W;
@@ -190,10 +192,11 @@ export const LAW_BY_ID: Record<string, Law> = {};
     const key = tier + cat;
     const pos = (counters[key] = (counters[key] ?? 0) + 1);
     const dd = GROUP_KEYS.map((k) => d[k] ?? 0) as W;
-    const law: Law = { id, tier, cat, pos, name, desc, w, down, d: dd, tags: tags ? tags.split(" ") : [] };
+    const law: Law = { id, tier, cat, pos, spec: 0, name, desc, w, down, d: dd, tags: tags ? tags.split(" ") : [] };
     LAWS.push(law);
     LAW_BY_ID[id] = law;
   }
+  for (const law of LAWS) law.spec = (law.pos - 1) / (counters[law.tier + law.cat] - 1);
 }
 
 export function lawsOf(tier: "R" | "N", cat?: number): Law[] {
@@ -222,8 +225,7 @@ for (const [a, b, s] of frictionRaw) FRICTION[a + "|" + b] = s;
 
 /** How far along its category's spectrum a law sits, 0..1. */
 export function spectrum(law: Law): number {
-  const n = lawsOf(law.tier, law.cat).length;
-  return (law.pos - 1) / (n - 1);
+  return law.spec;
 }
 
 /**

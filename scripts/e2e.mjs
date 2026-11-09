@@ -38,6 +38,13 @@ function client(name, token) {
     if (msg.type === "error") c.errors.push(msg);
     if (msg.type === "state") {
       c.st = msg;
+      // Half-time: make a move straight away so the count carries on.
+      if (!msg.count?.half) c.inHalf = false;
+      else if (!c.inHalf && !msg.you.eliminated) {
+        c.inHalf = true;
+        c.halves = (c.halves ?? 0) + 1;
+        c.send({ type: "react", reaction: c.move ?? null });
+      }
       c.waiters = c.waiters.filter((w) => (w.test(msg) ? (w.done(msg), false) : true));
     }
   });
@@ -97,6 +104,9 @@ const ben2 = client("ignored", benToken);
 await ben2.until((s) => s.phase === "counting", "ben back in");
 assert(ben2.st.you.id === ben.st.you.id && ben2.st.players.length === 3, "a dropped player returns to the same seat");
 
+// At half-time Ann scraps her first law; Ben passes.
+const scrapped = ann.st.players.find((p) => p.id === ann.st.you.id).regional.laws[0];
+ann.move = { kind: "drop", law: scrapped };
 console.log("  ... letting a one-minute count run on the real clock");
 const seen = new Set();
 let maxPainted = 0;
@@ -110,12 +120,18 @@ clearInterval(watch);
 assert(seen.size >= 8, `the ticker carried news during the count (${seen.size} headlines)`);
 assert(maxPainted > 1, "the map filled in as votes were counted");
 assert(after1.results1 && Object.keys(after1.results1.parties).length === 3, "regional results for all three parties");
+assert(ann.halves === 1 && ben2.halves === 1, "the count stopped once for half-time and restarted when both players had moved");
+assert(!after1.players.find((p) => p.id === ann.st.you.id).regional.laws.includes(scrapped), "a law scrapped at half-time is off the record");
+assert([...seen].length && after1.ticker.some((h) => h.text.includes("U-turn")), "the half-time move made the news");
+assert(after1.issue && after1.issue.cats.length === 2, "the match has a big issue");
+ann.move = null;
 const beforeFinal = [...ann.raw, ...ben2.raw].join("\n");
-assert(!/"w":|"down":|"tags":|"sat0?":|"lean":/.test(beforeFinal), "no hidden weights or satisfaction numbers were sent to browsers");
+assert(!/"w":|"down":|"tags":|"sat0?":|"lean":|"tilt":|"world":/.test(beforeFinal), "no hidden weights or satisfaction numbers were sent to browsers");
 assert(!beforeFinal.includes(benToken.slice(0, 12)) || !ann.raw.join("").includes(benToken), "other players' tokens stay private");
 
 // Play on to the end, whatever the voters decided.
 const players = [ann, ben2];
+let sawCoalition = false;
 for (let guard = 0; guard < 12 && ann.st.phase !== "final"; guard++) {
   if (ann.st.phase === "results") {
     console.log(`  ... regional outcome: ${ann.st.outcome.kind}`);
@@ -127,12 +143,21 @@ for (let guard = 0; guard < 12 && ann.st.phase !== "final"; guard++) {
   } else if (ann.st.phase === "counting") {
     for (const c of players) c.send({ type: "hasten" });
     await ann.until((s) => s.phase !== "counting", "hastened count", 15_000);
+  } else if (ann.st.phase === "coalition") {
+    console.log("  ... coalition talks");
+    sawCoalition = true;
+    for (const c of players) if (!c.st.you.eliminated) c.send({ type: "ally", id: null });
+    await ann.until((s) => s.phase !== "coalition", "end of coalition talks", 60_000);
   }
 }
 assert(ann.st.phase === "final", `the match reached a final result (${ann.st.outcome.kind})`);
 assert(ann.st.players.some((p) => p.id === ann.st.outcome.winner), "a winner is named");
 assert(ann.st.report && ann.st.reveal, "the laws' hidden costs are revealed at the end");
-if (ann.st.results2) assert(ann.st.results2.regions.every((r) => r.oldShare > 0), "the Old Order stays on the ballot in round two");
+if (ann.st.results2) {
+  assert(ann.st.results2.regions.every((r) => r.oldShare > 0), "the Old Order stays on the ballot in round two");
+  const seats = ann.st.seats;
+  assert(seats.all === seats.old + Object.values(seats.total).reduce((a, b) => a + b, 0), `every council seat is accounted for (${seats.all} seats${sawCoalition ? ", after coalition talks" : ""})`);
+}
 
 ann.send({ type: "newGame" });
 await ann.until((s) => s.phase === "lobby", "back to lobby");

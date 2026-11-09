@@ -10,12 +10,12 @@
 import { CATEGORIES, G, MODEL, RULES } from "../src/game/data";
 import { lawsOf } from "../src/game/laws";
 import { clerk, randomLean } from "../src/game/rules";
-import { makeRegions, mulberry32, runElection, shuffle, type Contender, type Platform, type Region, type Rng } from "../src/game/sim";
+import { allocateSeats, makeRegions, makeWorld, mulberry32, runElection, shuffle, type Contender, type Platform, type Region, type Rng, type World } from "../src/game/sim";
 
-type Strategy = (region: Region, rng: Rng) => Platform;
+type Strategy = (region: Region, rng: Rng, world: World) => Platform;
 
-const sensible: Strategy = (region, rng) => clerk({ round: 1, regions: [region], home: 0, gold: RULES.startGold, rng, noise: 5, full: true });
-const expert: Strategy = (region, rng) => clerk({ round: 1, regions: [region], home: 0, gold: RULES.startGold, rng, noise: 0, full: true });
+const sensible: Strategy = (region, rng, world) => clerk({ round: 1, regions: [region], home: 0, gold: RULES.startGold, rng, noise: 5, full: true, world });
+const expert: Strategy = (region, rng, world) => clerk({ round: 1, regions: [region], home: 0, gold: RULES.startGold, rng, noise: 0, full: true, world });
 const random: Strategy = (_region, rng) => {
   const laws: string[] = [];
   for (const cat of CATEGORIES) {
@@ -41,8 +41,9 @@ function trial(strategy: Strategy, q0: number, runs: number): { rate: number; me
   for (let i = 0; i < runs; i++) {
     const rng = mulberry32(1000 + i * 7919);
     const region = makeRegions(5, rng)[Math.floor(rng() * 5)];
-    const regional = strategy(region, rng);
-    const res = runElection({ round: 1, regions: [region], parties: [{ id: "p", name: "P", home: 0, regional }], seed: 5000 + i, q0, headlinesPerTick: 0 }).results;
+    const world = makeWorld(rng);
+    const regional = strategy(region, rng, world);
+    const res = runElection({ round: 1, regions: [region], parties: [{ id: "p", name: "P", home: 0, regional }], seed: 5000 + i, q0, world, headlinesPerTick: 0 }).results;
     const share = res.parties.p.share;
     sum += share;
     if (share >= RULES.qualifyShare) wins++;
@@ -82,29 +83,33 @@ for (const n of [2, 3, 4, 5]) {
   let games = 0;
   let old = 0;
   let winner = 0;
+  let talks = 0;
   const runs = 400;
   for (let i = 0; i < runs; i++) {
     const rng = mulberry32(77 + i * 131 + n);
     const regions = makeRegions(n, rng);
+    const world = makeWorld(rng);
     const parties: Contender[] = regions.map((_, h) => ({
       id: "p" + h,
       name: "P",
       home: h,
-      regional: clerk({ round: 1, regions: [regions[h]], home: 0, gold: RULES.startGold, rng, noise: 5, lean: randomLean(rng), full: true }),
+      regional: clerk({ round: 1, regions: [regions[h]], home: 0, gold: RULES.startGold, rng, noise: 5, lean: randomLean(rng), full: true, world }),
     }));
-    const first = runElection({ round: 1, regions, parties, seed: i * 3 + 1, q0: MODEL.q0, headlinesPerTick: 0 });
+    const first = runElection({ round: 1, regions, parties, seed: i * 3 + 1, q0: MODEL.q0, world, headlinesPerTick: 0 });
     const through = parties.filter((p) => first.results.parties[p.id].share >= RULES.qualifyShare);
     qualified += through.length / n;
     if (through.length < 2) continue;
     regions.forEach((r, k) => (r.sat = first.satAfter[k]));
-    for (const p of through) p.national = clerk({ round: 2, regions, home: p.home, gold: 70, rng, noise: 5, lean: randomLean(rng), full: true });
-    const second = runElection({ round: 2, regions, parties: through, seed: i * 3 + 2, q0: MODEL.q0 - MODEL.q0NationalShift, headlinesPerTick: 0 }).results;
+    for (const p of through) p.national = clerk({ round: 2, regions, home: p.home, gold: 70, rng, noise: 5, lean: randomLean(rng), full: true, world });
+    const second = runElection({ round: 2, regions, parties: through, seed: i * 3 + 2, q0: MODEL.q0 - MODEL.q0NationalShift, world, headlinesPerTick: 0 }).results;
+    const seats = allocateSeats(second, regions);
+    if (through.length >= 3 && Math.max(...Object.values(seats.total)) * 2 <= seats.all) talks++;
     games++;
     old += second.old.share;
     winner += Math.max(...through.map((p) => second.parties[p.id].share));
   }
   console.log(
     `  ${n} parties: bots qualify ${((qualified / runs) * 100).toFixed(0)}% of the time; a national round happens in ${((games / runs) * 100).toFixed(0)}% of matches; ` +
-      `Old Order takes ${((old / games) * 100).toFixed(0)}%, the winner ${((winner / games) * 100).toFixed(0)}%`,
+      `Old Order takes ${((old / games) * 100).toFixed(0)}%, the top party ${((winner / games) * 100).toFixed(0)}%; coalition talks in ${((talks / games) * 100).toFixed(0)}% of them`,
   );
 }

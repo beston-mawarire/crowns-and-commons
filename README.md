@@ -53,13 +53,15 @@ src/game/
   sim.ts           the election model (pure and seeded)
   headlines.ts     the news ticker
   rules.ts         what may be locked in, plus the clerk that fills gaps and plays bots
-  game.ts          the match as a state machine: lobby, planning, count, results, final
+  game.ts          the match as a state machine: lobby, planning, count (with half-time),
+                   results, coalition talks, final
 ```
 
 Two things keep it cheap and honest:
 
 - **The whole count is worked out the moment everyone locks in**, then released a slice at a
   time by a Durable Object alarm (ten slices per count). Between slices the room is asleep.
+  At half-time it is worked out once more with the parties' moves, from the same seed.
 - **Hidden numbers never leave the server.** Browsers receive law names and promises only;
   weights, satisfaction and other parties' plans stay behind until the rules reveal them.
 
@@ -72,7 +74,6 @@ All balance lives in data, not code:
 - `src/game/data.ts` `MODEL`: how strongly platforms move voters, the pull of the Old Order
   (`q0`), tax effects, campaign strengths, event odds.
 
-After changing either, run `npm run calibrate`. With the qualifying bar at 30%
-(`RULES.qualifyShare`), almost every sensible platform reaches the national round and only
-a platform its region really dislikes is knocked out; in the national round the Old Order
-takes about a quarter of the vote.
+After changing either, run `npm run calibrate`. It reports how often different kinds of
+platform clear the qualifying bar (`RULES.qualifyShare`, now 30%), how big the Old Order is in
+the national round, and how often coalition talks happen.
