@@ -131,6 +131,12 @@ function sawVersion(version) {
   if (!version || S.updating) return;
   if (!S.version) S.version = version;
   else if (version !== S.version) {
+    // Never reload twice for the same update. Right after a deployment different parts of the
+    // server can report different versions for a while, and that must not turn into a loop.
+    let already = null;
+    try { already = sessionStorage.getItem("cc:reloaded"); } catch { /* private mode */ }
+    if (already === version) return void (S.version = version);
+    try { sessionStorage.setItem("cc:reloaded", version); } catch { return void (S.version = version); }
     S.updating = true;
     toast("The game has been updated. Reloading…", 5000);
     // Nothing is lost: the match lives on the server and your seat is remembered.
@@ -194,7 +200,9 @@ function connect() {
     if (e.data === "pong") return;
     const msg = JSON.parse(e.data);
     if (msg.type === "welcome") {
-      sawVersion(msg.version);
+      // The room can lag behind a new deployment, so its version is not compared directly:
+      // it is only a cue to ask the front door, which is the one source of truth.
+      if (msg.version !== S.version) checkVersion();
       S.info = msg;
       store.set("cc:token:" + S.code, msg.you.token);
       store.set("cc:last", S.code);
