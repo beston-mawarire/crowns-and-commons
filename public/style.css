@@ -223,3 +223,28 @@ table.grid td.top { font-weight: 700; background: var(--wash); }
   .cell { transition: none; }
   #headline.fresh, #clock.low { animation: none; }
 }
+
+/* ---- Trade and Treachery */
+body.trade-mode #mapwrap, body.trade-mode #legend, body.trade-mode #mapactions, body.trade-mode #newsbox, body.trade-mode #banner { display: none; }
+#tradeboard { max-width: 820px; margin: 0 auto; }
+.t-inv { display: flex; flex-wrap: wrap; gap: 6px; }
+.t-inv span { border: 1.5px solid var(--ink); padding: 3px 9px; font-size: 13.5px; }
+.t-inv span b { font: 700 15px var(--sans); }
+.t-inv span.zero { border-color: var(--faint); color: var(--mid); }
+.t-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px dotted var(--mid); }
+.t-buttons { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.locked-note .t-buttons { margin-top: 8px; justify-content: flex-start; }
+.why { font-style: italic; color: var(--mid); }
+.t-job { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; font-size: 13.5px; padding: 5px 0; }
+.t-check { display: block; padding: 8px 0; font-size: 14px; }
+.t-scroll { max-height: 210px; overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 0 8px 0 0; list-style: none; border-bottom: 1px solid var(--ink); font-size: 13.5px; }
+.t-scroll.tall { max-height: 420px; }
+.t-scroll li, .t-scroll p { padding: 5px 0; margin: 0; border-top: 1px dotted var(--faint); }
+.t-scroll li.private { background: var(--wash); padding-left: 6px; }
+.t-scroll .dot { width: 9px; height: 9px; margin-right: 6px; }
+.t-offer { display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px dotted var(--mid); font-size: 14px; }
+.t-row { display: grid; grid-template-columns: 70px 1fr; gap: 6px; margin-bottom: 6px; }
+.t-row input, .t-say input { font: 15px var(--serif); background: var(--paper); color: var(--ink); border: 2px solid var(--ink); padding: 5px 8px; border-radius: 0; width: 100%; }
+.t-say { display: grid; grid-template-columns: 110px 1fr; gap: 6px; margin-top: 8px; }
+.t-banner { text-align: center; margin-bottom: 14px; }
+.t-banner h2 { font-size: clamp(22px, 3.4vw, 32px); }

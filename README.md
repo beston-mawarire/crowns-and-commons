@@ -6,6 +6,10 @@ region, then win the country. No combat, no game engine, no accounts: send frien
 
 The full rules, and every design decision behind them, are in [docs/DESIGN.md](docs/DESIGN.md).
 
+The same room can also play a second game, **Trade and Treachery**: a live trading game for
+three to five people about unequal starts, raw materials and broken promises. Its rules are in
+[docs/TRADE.md](docs/TRADE.md).
+
 ## Play it locally
 
 ```
@@ -60,6 +64,7 @@ src/game/
   rules.ts         what may be locked in, plus the clerk that fills gaps and plays bots
   game.ts          the match as a state machine: lobby, planning, count (with half-time),
                    results, coalition talks, final
+  trade.ts         the second mode, Trade and Treachery (browser side: public/js/trade.js)
 ```
 
 Two things keep it cheap and honest:

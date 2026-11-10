@@ -7,9 +7,10 @@ import type { Headline } from "./headlines";
 import { LAW_BY_ID, publicCatalogue } from "./laws";
 import { actionCost, botReaction, clerk, compatibility, emptyPlatform, problem, randomLean, sanitize, sanitizeReaction } from "./rules";
 import { NEUTRAL, allocateSeats, lawReport, makeRegions, makeWorld, mulberry32, runElection, shuffle } from "./sim";
+import { TRADE, startTrade, tradeAlarm, tradeHandle, tradeTick, tradeView, type TradeState } from "./trade";
 import type { Contender, ElectionInput, PaintRegion, Platform, Reaction, Region, Results, Seats, Timeline, World } from "./sim";
 
-export type Phase = "lobby" | "planning" | "counting" | "coalition" | "results" | "final";
+export type Phase = "lobby" | "planning" | "counting" | "coalition" | "results" | "final" | "trading";
 
 export interface Player {
   id: string;
@@ -63,7 +64,9 @@ export interface Room {
   round: 1 | 2;
   attempt: number;
   hostId: string;
-  settings: { simSec: number; planSec: number; quick: boolean };
+  settings: { simSec: number; planSec: number; quick: boolean; mode?: "election" | "trade"; tradeSec?: number };
+  /** The Trade and Treachery mode keeps its whole state here. */
+  trade?: TradeState | null;
   players: Player[];
   regions: Region[];
   world: World | null;
@@ -164,6 +167,14 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
   if (!me) return "You are not seated in this room.";
   room.touchedAt = now;
 
+  // Everything in the trading mode is handled by its own module.
+  if (typeof msg?.type === "string" && msg.type.startsWith("t.")) {
+    if (room.phase !== "trading" || !room.trade) return null;
+    const error = tradeHandle(room.trade, room.players, playerId, msg, now);
+    if (room.trade.over) room.phase = "final";
+    return error;
+  }
+
   switch (msg?.type) {
     case "profile": {
       if (room.phase !== "lobby") return "Names and colours are fixed once the match starts.";
@@ -180,6 +191,8 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
       if (!mayHost(room, playerId)) return "Only the host can change the settings.";
       if ((RULES.simChoices as readonly number[]).includes(msg.simSec)) room.settings.simSec = msg.simSec;
       if ((RULES.planChoices as readonly number[]).includes(msg.planSec)) room.settings.planSec = msg.planSec;
+      if (msg.mode === "election" || msg.mode === "trade") room.settings.mode = msg.mode;
+      if (TRADE.lengths.includes(msg.tradeSec)) room.settings.tradeSec = msg.tradeSec;
       if (typeof msg.quick === "boolean" && msg.quick !== room.settings.quick) {
         room.settings.quick = msg.quick;
         // A quick game comes with shorter counts, a full game with the full five minutes.
@@ -209,6 +222,14 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
     case "start": {
       if (room.phase !== "lobby") return "The match has already started.";
       if (!mayHost(room, playerId)) return "Only the host can start the match.";
+      if (room.settings.mode === "trade") {
+        if (room.players.some((p) => p.bot)) return "Trade and Treachery is for people only. Remove the bots first.";
+        if (room.players.length < TRADE.minPlayers) return "Trade and Treachery needs at least three players.";
+        room.match++;
+        room.trade = startTrade(room.players, room.settings.tradeSec ?? TRADE.defaultLength, (room.seed + room.match * 7919 + (now % 100000)) >>> 0, now);
+        room.phase = "trading";
+        return null;
+      }
       if (room.players.length < RULES.minPlayers) return "You need at least two parties. Invite a friend or add a bot.";
       startMatch(store, now);
       return null;
@@ -621,6 +642,7 @@ function startNational(store: Store, now: number) {
 function backToLobby(store: Store) {
   const { room } = store;
   room.phase = "lobby";
+  room.trade = null;
   room.round = 1;
   room.attempt = 1;
   room.regions = [];
@@ -643,6 +665,7 @@ const halfPending = (room: Room) => !!room.count?.half && !room.count.half.done;
 /** When the room next needs waking, or null. */
 export function nextAlarm(room: Room): number | null {
   if ((room.phase === "planning" || room.phase === "coalition") && room.deadline) return room.deadline;
+  if (room.phase === "trading" && room.trade) return tradeAlarm(room.trade);
   if (room.phase === "counting" && room.count) return halfPending(room) ? room.count.half!.until : room.count.startedAt + room.count.released * room.count.periodMs;
   return room.touchedAt + IDLE_MS;
 }
@@ -650,6 +673,11 @@ export function nextAlarm(room: Room): number | null {
 /** Called when the alarm goes off. Returns "expire" when the room should be deleted. */
 export function onAlarm(store: Store, now: number): "expire" | null {
   const { room } = store;
+  if (room.phase === "trading" && room.trade) {
+    tradeTick(room.trade, room.players, now + 100);
+    if (room.trade.over) room.phase = "final";
+    return null;
+  }
   if (room.phase === "planning") {
     if (room.deadline && now >= room.deadline - 100) lockEveryone(store, now);
     return null;
@@ -691,6 +719,7 @@ export function welcome(player: Player) {
     groups: GROUPS,
     colors: COLORS,
     rules: RULES,
+    tradeRules: TRADE,
   };
 }
 
@@ -725,6 +754,8 @@ export function view(room: Room, playerId: string, now: number) {
     attempt: room.attempt,
     hostId: room.hostId,
     settings: room.settings,
+    mode: room.settings.mode ?? "election",
+    trade: room.trade ? tradeView(room.trade, playerId, now) : null,
     limits: { min: lim.min, max: lim.max },
     issue: issue ? { name: issue.name, blurb: issue.blurb, cats: issue.cats } : null,
     you: {

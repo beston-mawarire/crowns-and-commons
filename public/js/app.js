@@ -2,6 +2,7 @@
 // The server sends the whole visible state after every change; this file draws it.
 
 import { buildMap, mapMarkup, fills, MAP_W, MAP_H } from "./map.js";
+import { renderTrade, tickTrade, leaveTrade } from "./trade.js";
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
@@ -253,6 +254,27 @@ function render() {
   if (!S.info || !st) return;
   $("#home").hidden = true;
   $("#game").hidden = false;
+
+  // The trading mode has its own screen and takes over the three panels.
+  const trading = !!st.trade;
+  document.body.classList.toggle("trade-mode", trading);
+  $("#tradeboard").hidden = !trading;
+  if (trading) {
+    S.lastPhase = st.phase;
+    S.rightKey = "";
+    closeModal();
+    $("#phase").textContent = st.trade.over ? "Trade and Treachery · the market has closed" : "Trade and Treachery · the market is open";
+    $("#invite").textContent = `Room ${st.code} · copy link`;
+    const latest = st.trade.news.at(-1);
+    if (latest && latest.id !== S.tradeNews) {
+      S.tradeNews = latest.id;
+      const h = $("#headline");
+      h.className = "fresh";
+      h.innerHTML = `<span>${esc(latest.text)}</span>`;
+    }
+    return renderTrade({ st: () => S.st, send, esc, hex, now, toast });
+  }
+  leaveTrade();
   syncDraft();
 
   if (S.lastPhase !== st.phase) {
@@ -359,7 +381,7 @@ function renderCentre() {
     return list.length > 1 ? list.slice(0, -1).join(", ") + " and " + list.at(-1) : list[0];
   };
   let banner = "";
-  if (st.phase === "lobby") banner = `<h2>Waiting for players</h2><p>Send your friends the link (top right). A game needs two to five parties, and the map is split into one region for each.</p>`;
+  if (st.phase === "lobby") banner = st.mode === "trade" ? `<h2>Trade and Treachery</h2><p>Send your friends the link (top right). Three to five players, each running one country. No bots.</p>` : `<h2>Waiting for players</h2><p>Send your friends the link (top right). A game needs two to five parties, and the map is split into one region for each.</p>`;
   else if (st.phase === "planning" && st.you.eliminated) banner = `<h2>The national election</h2><p>The remaining parties are choosing their national laws.</p>`;
   else if (st.phase === "planning" && st.round === 1) banner = `<h2>Your region: ${esc(st.regions[st.you.home].name)}</h2><p>${esc(st.regions[st.you.home].blurb)}. Win ${need()} of its votes to reach the national election.</p>`;
   else if (st.phase === "planning") banner = `<h2>Now it's the whole country</h2><p>Your regional laws stay. Add national laws and campaign in any region.</p>`;
@@ -433,12 +455,14 @@ function tick() {
   if (!st || !S.info) return;
   const clock = $("#clock");
   let end = null;
+  if (st.trade && !st.trade.over) end = st.trade.endsAt;
+  if (st.trade) tickTrade();
   if (st.phase === "planning" || st.phase === "coalition") end = st.deadline;
   if (st.phase === "counting" && st.count) end = st.count.half ?? st.count.startedAt + st.count.total * st.count.periodMs;
   if (end) {
     const left = Math.max(0, Math.ceil((end - now()) / 1000));
     clock.textContent = Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
-    clock.classList.toggle("low", (st.phase === "planning" && left <= 30) || ((st.phase === "coalition" || st.count?.half) && left <= 10));
+    clock.classList.toggle("low", (st.phase === "trading" && left <= 30) || (st.phase === "planning" && left <= 30) || ((st.phase === "coalition" || st.count?.half) && left <= 10));
   } else {
     clock.textContent = st.phase === "planning" ? "no limit" : "";
     clock.classList.remove("low");
@@ -480,7 +504,7 @@ function setHeadline(h) {
 function rightKey() {
   const st = S.st;
   const base = [st.phase, st.round, st.attempt, st.you.locked, st.you.eliminated, st.you.gold, st.you.mayHost];
-  if (st.phase === "lobby") base.push(JSON.stringify(st.settings), st.players.map((p) => p.id + p.color + p.name).join("|"));
+  if (st.phase === "lobby") base.push(st.mode, st.players.filter((p) => p.bot).length, JSON.stringify(st.settings), st.players.map((p) => p.id + p.color + p.name).join("|"));
   if (st.phase === "planning") base.push(st.players.filter((p) => !p.eliminated && !p.locked).length * (st.you.locked ? 1 : 0), st.you.endorse, st.you.endorsed);
   if (st.phase === "counting") base.push(!!st.count?.half, st.you.reacted);
   if (st.phase === "coalition") base.push(st.you.allied, st.you.ally, st.players.map((p) => p.allied).join(""));
@@ -525,6 +549,37 @@ function lobbyPanel() {
       .map((c) => `<button data-color="${c.id}" style="background:${c.hex}" aria-label="${c.id}" aria-pressed="${mine.color === c.id}" ${taken.has(c.id) ? "disabled" : ""}></button>`)
       .join("")}</div></div>
     <h3>Game settings</h3>
+    <div class="field"><label for="mode">Which game</label><select id="mode" ${host ? "" : "disabled"}><option value="election" ${st.mode === "trade" ? "" : "selected"}>Crowns &amp; Commons (the election game)</option><option value="trade" ${st.mode === "trade" ? "selected" : ""}>Trade and Treachery (the trading game)</option></select></div>
+    ${st.mode === "trade" ? tradeLobby(host) : electionLobby(host, opt, mins)}`;
+}
+
+function tradeLobby(host) {
+  const st = S.st;
+  const r = S.info.tradeRules;
+  const bots = st.players.some((p) => p.bot);
+  const ready = !bots && st.players.length >= r.minPlayers;
+  return `
+    <div class="field"><label for="tlen">Length of the game</label><select id="tlen" ${host ? "" : "disabled"}>${r.lengths.map((v) => `<option value="${v}" ${v === (st.settings.tradeSec ?? r.defaultLength) ? "selected" : ""}>${v / 60} minutes</option>`).join("")}</select></div>
+    ${
+      host
+        ? `<button class="btn big wide" id="start" ${ready ? "" : "disabled"}>Start the game</button>
+           ${ready ? "" : `<p class="hint">${bots ? "This game is for people only: remove the bots on the left." : "You need at least " + r.minPlayers + " players. Send your friends the link."}</p>`}`
+        : `<p class="hint">Waiting for the host to start the game.</p>`
+    }
+    <h3>How to play</h3>
+    <ol class="plain-list">
+      <li>Every player is one country. Each country starts with different things. Look at what you have, and at what the others have.</li>
+      <li>Turn raw materials (timber, ore, wool) into goods. You need a workshop, plus the right building for each product.</li>
+      <li>Sell goods to the market in batches of ${r.batch}. The market is not a player: it always buys, at its own prices.</li>
+      <li>Trade anything with anyone. A safe swap happens all at once. Sending is a gift, so a promise to send something back is only a promise.</li>
+      <li>Things will happen: prices move, discoveries are made, workers strike. Some news is for your eyes only.</li>
+      <li>It all runs live against one clock. When the market closes, the country that has grown the most wins.</li>
+    </ol>`;
+}
+
+function electionLobby(host, opt, mins) {
+  const st = S.st;
+  return `
     <div class="field"><label for="quick">Game length</label><select id="quick" ${host ? "" : "disabled"}><option value="0" ${st.settings.quick ? "" : "selected"}>Full game (2 or 3 laws in each area)</option><option value="1" ${st.settings.quick ? "selected" : ""}>Quick game (1 or 2 laws in each area, shorter counts)</option></select></div>
     <div class="field"><label for="plan">Time to choose laws</label><select id="plan" ${host ? "" : "disabled"}>${opt(S.info.rules.planChoices, st.settings.planSec, mins)}</select></div>
     <div class="field"><label for="sim">Length of each vote count</label><select id="sim" ${host ? "" : "disabled"}>${opt(S.info.rules.simChoices, st.settings.simSec, mins)}</select></div>
@@ -767,6 +822,8 @@ function wireRight(el) {
       send({ type: "profile", name: name.value });
     };
   el.querySelectorAll("[data-color]").forEach((b) => (b.onclick = () => send({ type: "profile", color: b.dataset.color })));
+  if (el.querySelector("#mode")) el.querySelector("#mode").onchange = (e) => send({ type: "settings", mode: e.target.value });
+  if (el.querySelector("#tlen")) el.querySelector("#tlen").onchange = (e) => send({ type: "settings", tradeSec: Number(e.target.value) });
   if (el.querySelector("#quick")) el.querySelector("#quick").onchange = (e) => send({ type: "settings", quick: e.target.value === "1" });
   if (el.querySelector("#plan")) el.querySelector("#plan").onchange = (e) => send({ type: "settings", planSec: Number(e.target.value) });
   if (el.querySelector("#sim")) el.querySelector("#sim").onchange = (e) => send({ type: "settings", simSec: Number(e.target.value) });
