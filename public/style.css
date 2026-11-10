@@ -311,3 +311,11 @@ table.t-causes th, table.t-causes td { font-size: 12.5px; padding: 5px 6px; }
 #topnav a.btn { text-decoration: none; display: inline-block; }
 #resume { margin: 0 0 16px; }
 #resume a { text-decoration: none; display: inline-block; }
+.t-card > h3:first-child { cursor: pointer; user-select: none; }
+.t-card > h3:first-child::before { content: "▾"; display: inline-block; width: 1.1em; transition: transform 0.15s; }
+.t-card.min > h3:first-child::before { transform: rotate(-90deg); }
+.t-card.min { padding-bottom: 4px; }
+.t-card.min > *:not(h3:first-child) { display: none; }
+.t-card.min > h3:first-child { border-bottom: 0; margin-bottom: 0; }
+i.sq { display: inline-block; width: 10px; height: 10px; margin-right: 6px; background: var(--s); border: 1px solid var(--ink); }
+.t-two:has(> .min) { align-items: start; }

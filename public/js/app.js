@@ -616,9 +616,8 @@ function tradeLobby(host) {
       <li>Turn raw materials (timber, ore, wool, grain, coal) into goods. You need a workshop, plus the right building for each product.</li>
       <li>Sell goods to the market. It is not a player: it always buys, at its own prices, usually ${r.batch} at a time and now and then 3 or 1.</li>
       <li>Trade anything with anyone. A safe swap happens all at once. Sending is a gift, so a promise to send something back is only a promise.</li>
-      <li>Every minute is payday. Each full home (10 people) earns you gold and pays a little tax. Your people eat food, or you pay to buy it in. Build housing to grow.</li>
-      <li>You can buy shares on the stock exchange. They pay you every payday, and their prices rise and fall with the news.</li>
-      <li>Things will happen, and no two games are the same: prices move, workers strike, people cross borders, raiders gather, droughts and booms hit the whole world. Some news is for your eyes only.</li>
+      <li>Buy shares on the stock exchange. Every minute they pay out ${Math.round(r.dividend * 100)}% of their price. Each company has only ${r.shareSupply} shares, so once they are gone you must trade for them.</li>
+      <li>Things will happen, and no two games are the same: prices move, workers strike, raiders gather, droughts and booms hit the whole world. Some news is for your eyes only.</li>
       <li>It all runs live against one clock. When the market closes, the country that has grown the most wins.</li>
     </ol>`;
 }

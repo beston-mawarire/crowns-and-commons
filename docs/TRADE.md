@@ -37,7 +37,7 @@ two games) are alike.
 
 Three players get one of each; four get a second raw-material country; five also get a second
 poor country. Nobody starts able to make everything, so the industrial country needs
-buildings as well as materials from the others. Every country starts with 10 people and one home.
+buildings as well as materials from the others. 
 
 ## What can be made
 
@@ -59,7 +59,7 @@ Every product needs a workshop as well as the buildings listed.
   and takes 5 to 12 seconds an item.
 - **Sell to the market** in batches of five, at the market's prices. The market will also buy
   raw materials, but only for 25 gold each.
-- **Build:** a workshop costs 900 gold, a mill 400, the other industries 600, housing 300, a border guard 200.
+- **Build:** a workshop costs 900 gold, a mill 400, the other industries 600, a border guard 200.
 - **Buy and sell shares** in four companies (below).
 - **Safe swap:** offer anything for anything, to one country or to whoever accepts first. It
   happens all at once or not at all.
@@ -81,22 +81,10 @@ With both switched off, a poor country can win by bluffing: it starts worth only
 hundred, so talking its way into one workshop it never gives back (worth 900) more than
 doubles it, while the industrial country would need to add thousands to keep pace.
 
-## People, homes and payday
+## Payday
 
-Every country starts with 10 people and one home. A home holds 10 people. Every minute is
-payday, and each country:
-
-1. earns 80 gold for every full home;
-2. receives 3% of the value of the shares it holds;
-3. feeds its people: one food for every ten people, taken from its stores, or bought in at
-   the market's food price plus 10 (50 gold at the start);
-4. pays 10 gold tax for every full home, **unless** since the last payday it gave away 100
-   gold's worth of anything, lent a building, or still has a building out on loan.
-
-So ten housed people bring in 20 gold a payday if their food is bought in, and 70 if the
-country grows its own. **Housing** costs 300 gold: ten new people move in, which means more
-income, more food to find and more tax. The screen shows the next payday as a small sum,
-line by line, in green and red.
+Every minute, every share pays out 30% of its current price in gold. That is the only thing
+that happens at payday: there is no tax, and nothing has to be fed.
 
 ## The market's orders
 
@@ -105,27 +93,32 @@ product three at a time, or one at a time; the news says so and the sell button 
 
 ## The stock exchange
 
-Four companies: Timber Co, Ironworks, Farm & Loom, Coal & Power. Shares start at 100 gold.
-Prices drift a little every 30 seconds and jump when the news touches their industry. Shares
-count towards worth at their current price, pay out every payday, and can be swapped, sent
-and promised like anything else.
+The heart of the game, with trade between countries. Four companies: Timber Co, Ironworks,
+Farm & Loom, Coal & Power. Each has only **10 shares**. Shares start at 100 gold.
+
+- Buying a share from the company raises its price by 5% for the next buyer; selling one back
+  lowers it by 5%. So the first buyer gets the best price, and a big buyer pushes the price up
+  for everyone (which also raises what every holder is paid).
+- Once all ten are owned, the only way to get one is from another country: in a safe swap,
+  as a gift, or on a promise.
+- Prices also drift every 30 seconds and jump when the news touches their industry.
+- Shares count towards worth at their current price.
+
+The 30% payout would compound out of control without the limit of ten shares per company;
+with it, shares are a prize to fight and bargain over rather than a place to park gold.
 
 ## Borders
 
-A border guard costs 200 gold. Two events are announced in advance, so there is time to
-build one, or to gamble:
-
-- **Migration.** Every country without a guard takes in 10 new people. They have no home, so
-  they eat every payday and earn nothing, until housing is built for them.
-- **Invasion.** Raiders (not a player) strike one country without a guard, taking a fifth of
-  its gold and a quarter of its raw materials.
+A border guard costs 200 gold. The game warns that raiders are gathering; when they strike,
+they hit one country without a guard and take a fifth of its gold and a quarter of its raw
+materials.
 
 ## World events
 
 On top of the fixed timetable below, each game picks a few world events at random (three in
 a 10-minute game, four in 15, five in 20) and fires them at times nobody can plan for:
 a hard winter, a drought, forest fires, a new invention, a new fashion, a stock exchange
-panic or rally, a trade fair, a festival year, a world tax on the richest country, and relief
+panic or rally, a trade fair, an extra payout to shareholders, a world tax on the richest country, and relief
 for the poorest. They move prices, share prices and what countries hold.
 
 ## What happens during the game
@@ -143,8 +136,7 @@ Roughly in this order, with a little variation in the timing:
    without a workshop.
 7. **A boom.** The cheapest product jumps in price.
 
-The border warning and migration come early in the game; the raid warning and the invasion
-come around the middle.
+The raid warning and the invasion come around the middle of the game.
 
 ## Winning
 
@@ -157,8 +149,8 @@ During the game each player sees their worth, what it is made of, and where thei
 come from. When the market closes, the results show for every country:
 
 - what it started with, its worth at the start and the end, and a chart of it;
-- where its growth came from: making and selling goods, deals with other countries, homes,
-  share payouts, share prices, food, tax and events (these always add up to the total);
+- where its growth came from: making and selling goods, deals with other countries, share
+  payouts, share prices and events (these always add up to the total);
 - what its worth is made of at the start and the end: gold, raw materials, goods, buildings
   and shares;
 - how the price of raw materials moved, every deal in order, and four questions to talk about.
@@ -167,6 +159,11 @@ come from. When the market closes, the results show for every country:
 
 The numbers (prices, production times, building costs, event sizes) are a first guess and
 live at the top of `src/game/trade.ts`. In particular it is not yet known whether the poorer
-starts can realistically out-grow the industrial one, whether payday (homes, food, tax) is
-too gentle or too harsh, whether housing pays for itself too quickly or too slowly, or
-whether shares are too safe a place to park gold.
+starts can realistically out-grow the industrial one, whether a 30% payout with ten shares a
+company makes the stock exchange too strong compared with making and selling goods.
+
+## On screen
+
+Every section (your country, payday, the stock exchange, making, the market, deals, talk,
+news, and each part of the results) can be folded away by clicking its heading. Each device
+remembers which sections were folded.
