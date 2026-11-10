@@ -586,11 +586,11 @@ function tradeLobby(host) {
     <ol class="plain-list">
       <li>Every player is one country. Each country starts with different things. Look at what you have, and at what the others have.</li>
       <li>Turn raw materials (timber, ore, wool, grain, coal) into goods. You need a workshop, plus the right building for each product.</li>
-      <li>Sell goods to the market in batches of ${r.batch}. The market is not a player: it always buys, at its own prices.</li>
+      <li>Sell goods to the market. It is not a player: it always buys, at its own prices, usually ${r.batch} at a time and now and then 3 or 1.</li>
       <li>Trade anything with anyone. A safe swap happens all at once. Sending is a gift, so a promise to send something back is only a promise.</li>
-      <li>Every minute is payday: a little income, food for your people, and tax on big piles of gold. Giving things away or lending a building saves you the tax.</li>
+      <li>Every minute is payday. Each full home (10 people) earns you gold and pays a little tax. Your people eat food, or you pay to buy it in. Build housing to grow.</li>
       <li>You can buy shares on the stock exchange. They pay you every payday, and their prices rise and fall with the news.</li>
-      <li>Things will happen: prices move, workers strike, people cross borders, raiders gather. A border guard keeps your country safe. Some news is for your eyes only.</li>
+      <li>Things will happen, and no two games are the same: prices move, workers strike, people cross borders, raiders gather, droughts and booms hit the whole world. Some news is for your eyes only.</li>
       <li>It all runs live against one clock. When the market closes, the country that has grown the most wins.</li>
     </ol>`;
 }

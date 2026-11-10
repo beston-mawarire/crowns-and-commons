@@ -23,9 +23,9 @@ function started(players = 3) {
 /** Starts vary from game to game; most tests want a known one. */
 function fixStarts(t: any) {
   const fixed: Record<string, Record<string, number>> = {
-    A: { gold: 600, workshop: 2, sawmill: 1, forge: 1, loom: 1, timber: 2, ore: 1, wool: 1 },
-    B: { gold: 200, timber: 16, ore: 14, wool: 14, amber: 2 },
-    C: { gold: 200, timber: 6, ore: 4, wool: 5 },
+    A: { gold: 600, workshop: 2, sawmill: 1, forge: 1, loom: 1, timber: 2, ore: 1, wool: 1, housing: 1 },
+    B: { gold: 200, timber: 16, ore: 14, wool: 14, amber: 2, housing: 1 },
+    C: { gold: 200, timber: 6, ore: 4, wool: 5, housing: 1 },
   };
   for (const p of Object.values(t.players) as any[]) {
     p.inv = { ...fixed[p.tier] };
@@ -229,19 +229,18 @@ describe("Trade and Treachery: the wider economy", () => {
     expect(t.players[rich.id].inv).toMatchObject({ food: 2, electricity: 0 });
   });
 
-  it("pays out and collects every minute: income, dividends, food and tax", () => {
+  it("pays out and collects every minute: homes, dividends, food and tax", () => {
     const { store, t, rich, raw, poor } = started();
     act(store, rich, { type: "t.stock", id: "wood", n: 2 }, 2100); // 200 gold of shares at 100
     expect(t.players[rich.id].inv).toMatchObject({ gold: 400, share_wood: 2 });
     t.players[raw.id].inv.food = 3;
     runTo(store, 62_000);
-    const price = t.stocks.wood.price;
-    // rich: 400 + income + dividends - 25 to import food = taxed at 5% above 200
-    const before = 400 + TRADE.baseIncome + Math.round(2 * price * TRADE.dividend) - 25;
-    expect(t.players[rich.id].inv.gold).toBe(before - Math.round((before - 200) * TRADE.taxRate));
-    // raw-material country: fed from its own stores, and only just over the tax allowance
-    expect(t.players[raw.id].inv).toMatchObject({ gold: 238, food: 2 }) // 240, less 5% of the 40 above the allowance;
-    expect(t.players[poor.id].inv.gold).toBe(214); // 200 + 40 - 25 for imported food - 1 tax
+    const buyFood = t.prices.food + TRADE.foodMarkup;
+    const dividends = Math.round(2 * t.stocks.wood.price * TRADE.dividend);
+    expect(t.players[rich.id].inv.gold).toBe(400 + TRADE.homeIncome + dividends - buyFood - TRADE.homeTax);
+    // fed from its own stores
+    expect(t.players[raw.id].inv).toMatchObject({ gold: 200 + TRADE.homeIncome - TRADE.homeTax, food: 2 });
+    expect(t.players[poor.id].inv.gold).toBe(200 + TRADE.homeIncome - buyFood - TRADE.homeTax);
     expect(t.players[rich.id].history).toHaveLength(2);
     expect(view(store.room, rich.id, 62_001).trade!.news.at(-1)!.text).toMatch(/^Payday/);
   });
@@ -251,9 +250,117 @@ describe("Trade and Treachery: the wider economy", () => {
     act(store, rich, { type: "t.send", to: poor.id, give: { gold: 100 } }, 3000);
     expect(view(store.room, rich.id, 3001).trade!.me!.taxFree).toBe(true);
     runTo(store, 62_000);
-    expect(t.players[rich.id].inv.gold).toBe(500 + 40 - 25); // no tax taken
+    const each = TRADE.homeIncome - (t.prices.food + TRADE.foodMarkup);
+    expect(t.players[rich.id].inv.gold).toBe(500 + each); // no tax taken
     runTo(store, 122_000);
-    expect(t.players[rich.id].inv.gold).toBeLessThan(515 + 40 - 25); // taxed again the minute after
+    expect(t.players[rich.id].inv.gold).toBe(500 + each * 2 - TRADE.homeTax); // taxed again the minute after
+  });
+
+  it("grows a country through housing: more people, more income, more food, more tax", () => {
+    const { store, t, poor } = started();
+    t.players[poor.id].inv.gold = 1000;
+    expect(act(store, poor, { type: "t.buy", building: "housing" }, 2100)).toBeNull();
+    expect(t.players[poor.id].population).toBe(20);
+    runTo(store, 62_000);
+    expect(t.players[poor.id].inv.gold).toBe(700 + 2 * (TRADE.homeIncome - TRADE.homeTax - t.prices.food - TRADE.foodMarkup));
+  });
+
+  it("leaves migrants without homes, eating but not earning, until housing is built for them", () => {
+    const { store, t, poor } = started();
+    const p = t.players[poor.id];
+    p.population = 20; // as after a migration
+    p.inv.gold = 1000;
+    runTo(store, 62_000);
+    const food = t.prices.food + TRADE.foodMarkup;
+    expect(p.inv.gold).toBe(1000 + TRADE.homeIncome - TRADE.homeTax - 2 * food); // one home earns, two groups eat
+    expect(view(store.room, poor.id, 62_001).trade!.news.at(-1)!.text).toMatch(/10 of your people have no home/);
+    act(store, poor, { type: "t.buy", building: "housing" }, 63_000);
+    expect(p.population).toBe(20); // the newcomers moved in; nobody new arrived
+    expect(p.inv.housing).toBe(2);
+  });
+
+  it("explains every change in worth: the causes add up to the total", () => {
+    const { store, t, rich, raw, poor } = started();
+    act(store, rich, { type: "t.make", good: "planks", count: 2 }, 2100);
+    act(store, rich, { type: "t.stock", id: "farm", n: 3 }, 2200);
+    act(store, raw, { type: "t.send", to: poor.id, give: { timber: 4 } }, 2300);
+    act(store, raw, { type: "t.offer", to: rich.id, give: { ore: 5 }, want: { gold: 90 } }, 2400);
+    act(store, rich, { type: "t.accept", id: t.offers[0].id }, 2500);
+    runTo(store, t.endsAt);
+    const rows = view(store.room, rich.id, t.endsAt + 1).trade!.result!.rows;
+    for (const row of rows) {
+      const sum = Object.values(row.ledger as Record<string, number>).reduce((a, b) => a + b, 0);
+      expect(sum).toBe(row.wealth - row.startWealth);
+      const parts = Object.values(row.partsEnd as Record<string, number>).reduce((a, b) => a + b, 0);
+      expect(Math.round(parts)).toBe(row.wealth);
+    }
+    const mine = rows.find((r) => r.id === rich.id)!.ledger;
+    expect(mine.made).toBe(2 * 150 - 2 * 25); // two planks from two timber
+    expect(mine.deals).toBe(5 * 25 - 90); // paid 90 for ore the market values at 125
+    expect(rows.find((r) => r.id === raw.id)!.ledger.deals).toBe(-100 + 90 - 125);
+    expect(mine.income).toBeGreaterThan(0);
+    expect(mine.tax).toBeLessThan(0);
+  });
+
+  it("sometimes has the market ask for three or one at a time", () => {
+    const { store, t, rich } = started();
+    t.players[rich.id].inv.cloth = 4;
+    expect(act(store, rich, { type: "t.sell", good: "cloth" }, 2100)).toMatch(/batches of 5/);
+    t.batch.cloth = 3;
+    expect(act(store, rich, { type: "t.sell", good: "cloth" }, 2200)).toBeNull();
+    expect(t.players[rich.id].inv).toMatchObject({ cloth: 1, gold: 600 + 3 * 200 });
+    t.batch.cloth = 1;
+    expect(act(store, rich, { type: "t.sell", good: "cloth" }, 2300)).toBeNull();
+    expect(view(store.room, rich.id, 2301).trade!.batch.cloth).toBe(1);
+    // over many games the order size does change by itself, and five stays the usual size
+    let odd = 0;
+    let steps = 0;
+    for (let seed = 1; seed <= 10; seed++) {
+      const s: Store = { room: createRoom("B" + seed, seed * 17, 1000, "trade"), timeline: null };
+      const ps = [0, 1, 2].map((i) => join(s.room, newId, "C" + i) as Player);
+      handle(s, ps[0].id, { type: "start" }, 2000, newId);
+      const tr = s.room.trade!;
+      for (let at = 32_000; at < tr.endsAt; at += 30_000) {
+        runTo(s, at);
+        steps += 7;
+        odd += Object.values(tr.batch).filter((n) => n !== 5).length;
+      }
+    }
+    expect(odd).toBeGreaterThan(0);
+    expect(odd / steps).toBeLessThan(0.25);
+  });
+
+  it("picks a few world events for each game, and they move prices, shares and stores", () => {
+    const kinds = new Set<string>();
+    for (let seed = 1; seed <= 15; seed++) {
+      const s: Store = { room: createRoom("W" + seed, seed * 13, 1000, "trade"), timeline: null };
+      const ps = [0, 1, 2].map((i) => join(s.room, newId, "C" + i) as Player);
+      handle(s, ps[0].id, { type: "start" }, 2000 + seed, newId);
+      const world = s.room.trade!.events.filter((e) => e.kind.startsWith("w:"));
+      expect(world).toHaveLength(4); // a 15-minute game
+      world.forEach((e) => kinds.add(e.kind));
+      runTo(s, s.room.trade!.endsAt); // and every one of them runs without trouble
+      expect(s.room.trade!.over).toBe(true);
+    }
+    expect(kinds.size).toBeGreaterThan(8);
+
+    const { store, t, raw } = started();
+    t.events = [
+      { kind: "w:drought", at: 5000, done: false },
+      { kind: "w:panic", at: 6000, done: false },
+      { kind: "w:fair", at: 7000, done: false },
+    ];
+    t.players[raw.id].inv.grain = 9;
+    t.players[raw.id].inv.cloth = 5;
+    runTo(store, 6000);
+    expect(t.players[raw.id].inv.grain).toBe(6);
+    expect(t.prices.food).toBe(60);
+    expect(t.stocks.metal.price).toBe(70);
+    expect(t.players[raw.id].ledger.events).toBe(-3 * 25);
+    runTo(store, 7000);
+    act(store, raw, { type: "t.sell", good: "cloth" }, 7100);
+    expect(t.players[raw.id].inv.gold).toBe(200 + 5 * 200 * 1.25);
+    expect(view(store.room, raw.id, 7101).trade!.news.filter((n) => n.kind === "world")).toHaveLength(3);
   });
 
   it("moves share prices with the news, and lets shares be traded like anything else", () => {

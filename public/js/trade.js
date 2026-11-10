@@ -9,7 +9,7 @@ const el = (id) => document.getElementById(id);
 const name = (id) => api.st().players.find((p) => p.id === id)?.name ?? "?";
 const color = (id) => api.hex(api.st().players.find((p) => p.id === id)?.color);
 const RAWLIST = ["timber", "ore", "wool", "grain", "coal"];
-const ORDER = ["gold", ...RAWLIST, "amber", "planks", "cloth", "tools", "food", "electricity", "furniture", "machinery", "workshop", "sawmill", "forge", "loom", "mill", "power", "garrison", "share_wood", "share_metal", "share_farm", "share_energy"];
+const ORDER = ["gold", ...RAWLIST, "amber", "planks", "cloth", "tools", "food", "electricity", "furniture", "machinery", "workshop", "sawmill", "forge", "loom", "mill", "power", "garrison", "housing", "share_wood", "share_metal", "share_farm", "share_energy"];
 const low = (k) => T().names[k].toLowerCase();
 
 /** The same sum the server uses: gold, goods at usual prices, raw materials at the floor, buildings at cost, shares at today's price. */
@@ -33,6 +33,52 @@ function spark(values, w = 120, h = 26) {
 }
 const list = (inv) => !inv ? "hidden" : ORDER.filter((k) => inv[k] > 0).map((k) => `${T().names[k]} ${inv[k]}`).join(" · ") || "nothing";
 const words = (inv) => ORDER.filter((k) => inv[k] > 0).map((k) => `${inv[k]} ${low(k)}`).join(", ") || "nothing";
+
+/** Only touch the page when something has changed, so a click is never lost to a redraw. */
+const drawn = {};
+function setHTML(id, html) {
+  const node = el(id);
+  if (!node || (drawn[id] === html && node.dataset.drawn)) return;
+  drawn[id] = html;
+  node.dataset.drawn = "1";
+  node.innerHTML = html;
+}
+const signed = (n) => (n > 0 ? `<span class="up">+${n.toLocaleString()}</span>` : n < 0 ? `<span class="down">−${Math.abs(n).toLocaleString()}</span>` : `<span class="muted">0</span>`);
+const arrow = (now, was) => (now > was ? `<span class="up">▲</span>` : now < was ? `<span class="down">▼</span>` : `<span class="muted">•</span>`);
+
+/** What a country's worth is made of, in the same five piles the results use. */
+const PILES = [["gold", "Gold"], ["raws", "Raw materials"], ["goods", "Goods"], ["buildings", "Buildings"], ["shares", "Shares"]];
+const GROUPS = { raws: [...RAWLIST, "amber"], goods: ["planks", "cloth", "tools", "food", "electricity", "furniture", "machinery"], buildings: ["workshop", "sawmill", "forge", "loom", "mill", "power", "garrison", "housing"], shares: ["share_wood", "share_metal", "share_farm", "share_energy"] };
+function pilesOf(inv) {
+  const t = T();
+  const sum = (keys, price) => keys.reduce((a, k) => a + (inv[k] ?? 0) * price(k), 0);
+  return {
+    gold: inv.gold ?? 0,
+    raws: sum(GROUPS.raws, () => t.rules.rawFloor),
+    goods: sum(GROUPS.goods, (g) => t.recipes[g].price),
+    buildings: sum(GROUPS.buildings, (b) => t.rules.buildingPrice[b]),
+    shares: sum(GROUPS.shares, (k) => t.stocks[k.slice(6)].price),
+  };
+}
+/** A bar split into the five piles. `scale` is the worth that would fill the whole width. */
+function pileBar(piles, scale) {
+  const total = PILES.reduce((a, [k]) => a + piles[k], 0) || 1;
+  return `<div class="t-bar" style="width:${Math.max(4, Math.round((total / (scale || total)) * 100))}%">${PILES.map(([k, label]) => (piles[k] > 0 ? `<i class="k-${k}" style="flex:${piles[k]}" title="${label}: ${Math.round(piles[k]).toLocaleString()}"></i>` : "")).join("")}</div>`;
+}
+const pileKey = (piles) => `<div class="t-key">${PILES.map(([k, label]) => `<span><i class="k-${k}"></i>${label} <b>${Math.round(piles[k]).toLocaleString()}</b></span>`).join("")}</div>`;
+
+/** Where a change in worth came from. Making and selling are shown together. */
+const CAUSES = [
+  ["goods", "Making and selling goods"],
+  ["deals", "Deals, gifts and loans"],
+  ["income", "Homes"],
+  ["dividends", "Share payouts"],
+  ["shares", "Share prices moving"],
+  ["food", "Food"],
+  ["tax", "Tax"],
+  ["events", "Events (finds, raids, aid, disasters)"],
+];
+const causes = (l) => ({ ...l, goods: (l.made ?? 0) + (l.market ?? 0) });
 
 /** My holdings including goods that have finished since the server last spoke. */
 function myInv() {
@@ -63,6 +109,7 @@ export function renderTrade(helpers) {
 
 function build() {
   built = true;
+  for (const k of Object.keys(drawn)) delete drawn[k];
   const st = api.st();
   const t = T();
   const others = st.players.filter((p) => p.id !== st.you.id);
@@ -72,26 +119,40 @@ function build() {
 
   el("left").innerHTML = `<h3>Countries</h3><div id="t-countries"></div>
     <h3>How it works</h3>
-    <p class="small muted">Turn raw materials into goods and sell them to the market in batches of ${t.rules.batch}. You need a workshop, plus the right building for each product. Everything can be traded: materials, gold, goods, even buildings. A <b>safe swap</b> happens all at once. <b>Sending</b> is a gift: if someone promises to send something back, that is only a promise. Whoever grows their country the most wins.</p>
-    <p class="small muted"><b>Payday</b> comes every minute: a little income, dividends on any shares you own, food for your people (one food for every ten, or you pay to import it), and tax on gold above ${t.rules.taxAllowance}. <b>No tax</b> if you gave away ${t.rules.generousValue} gold's worth or lent a building since the last payday. A <b>border guard</b> keeps out raiders and unplanned arrivals.</p>
+    <ul class="t-how">
+      <li><b class="w-make">Make</b> goods from raw materials. You need a workshop and the right building.</li>
+      <li><b class="w-market">Sell</b> goods to the market. It usually buys five at a time.</li>
+      <li><b class="w-deals">Deal</b> with other countries. A safe swap happens all at once. Sending is a gift, and a promise is only a promise.</li>
+      <li><b class="w-people">Payday</b> comes every minute. Full homes earn gold, people eat food, homes pay tax.</li>
+      <li><b class="w-stocks">Shares</b> pay you every payday. Their prices follow the news.</li>
+      <li>The country that <b>grows the most</b> wins.</li>
+    </ul>
     <p class="small muted">${t.open ? "Everyone can see what every country holds." : "<b>Holdings are hidden.</b> You only know what others tell you, and they may not be telling the truth."} ${t.autoReturn ? "A lent building comes back by itself when the loan ends." : "<b>A lent building only comes back if the borrower returns it.</b>"}</p>`;
 
   el("tradeboard").innerHTML = `
     <div id="t-alert"></div>
-    <h3>Your country</h3><div id="t-worth"></div><div id="t-inv" class="t-inv"></div>
-    <h3>Make goods</h3><div id="t-make"></div><div id="t-jobs"></div>
-    <h3>The market</h3><div id="t-market"></div>
-    <h3>The stock exchange</h3><p class="small muted">Shares pay ${t.rules.dividend * 100}% of their price every payday and count towards your worth. Prices drift, and jump when news hits their industry.</p><div id="t-stocks"></div>
-    <h3>News <span class="muted">(newest first)</span></h3><ol id="t-news" class="t-scroll"></ol>`;
+    <div class="t-two">
+      <section class="t-card c-country"><h3>Your country</h3><div id="t-worth"></div></section>
+      <section class="t-card c-people"><h3>People and payday <span id="t-pay-in"></span></h3><div id="t-pay"></div></section>
+    </div>
+    <section class="t-card c-country"><h3>What you hold</h3><div id="t-inv"></div></section>
+    <section class="t-card c-make"><h3>Make goods</h3><div id="t-jobs"></div><div id="t-make"></div></section>
+    <section class="t-card c-market"><h3>The market</h3><div id="t-market"></div></section>
+    <section class="t-card c-build"><h3>Build industry</h3><div id="t-build"></div></section>
+    <section class="t-card c-stocks"><h3>The stock exchange</h3><p class="small muted">Shares pay ${t.rules.dividend * 100}% of their price every payday and count towards your worth. Prices jump when news hits their industry.</p><div id="t-stocks"></div></section>
+    <section class="t-card c-news"><h3>News <span class="muted">(newest first)</span></h3><ol id="t-news" class="t-scroll"></ol></section>`;
 
   el("right").innerHTML = `
-    <h3>Offers on the table</h3><div id="t-offers"></div>
-    <h3>Propose a safe swap</h3>
+    <section class="t-card c-deals"><h3>Offers on the table</h3><div id="t-offers"></div></section>
+    <section class="t-card c-talk"><h3>Talk</h3>
+    <div id="t-chat" class="t-scroll"></div>
+    <div class="t-say"><select id="t-chat-to" aria-label="Say to">${who("Everyone")}</select><input id="t-chat-text" maxlength="200" placeholder="Make a deal…" aria-label="Message" /></div></section>
+    <section class="t-card c-deals"><h3>Propose a safe swap</h3>
     <div class="field"><label for="t-to">To</label><select id="t-to">${who("Anyone who accepts first")}</select></div>
     <div class="field"><label>I give</label>${row("t-g1")}${row("t-g2")}</div>
     <div class="field"><label>I want</label>${row("t-w1")}${row("t-w2")}</div>
-    <button class="btn wide" id="t-offer">Put this offer on the table</button>
-    <h3>Send something <span class="muted">(no guarantee)</span></h3>
+    <button class="btn wide" id="t-offer">Put this offer on the table</button></section>
+    <section class="t-card c-deals"><h3>Send something <span class="muted">(no guarantee)</span></h3>
     <p class="small muted">A straight gift. Use it for aid, loans, or deals made on trust.</p>
     <div class="field"><select id="t-send-to" aria-label="Send to">${others.map((p) => `<option value="${p.id}">to ${api.esc(p.name)}</option>`).join("")}</select></div>
     ${row("t-s1")}
@@ -101,10 +162,7 @@ function build() {
     <div class="t-row"><select id="t-lend-min" aria-label="For how long">${[1, 2, 3, 5].map((m) => `<option value="${m}">${m} min</option>`).join("")}</select><select id="t-lend-b" aria-label="Building">${Object.keys(t.rules.buildingPrice).map((b) => `<option value="${b}">${t.names[b]}</option>`).join("")}</select></div>
     <div class="field"><select id="t-lend-to" aria-label="Lend to">${others.map((p) => `<option value="${p.id}">to ${api.esc(p.name)}</option>`).join("")}</select></div>
     <button class="btn ghost wide" id="t-lend">Lend it</button>
-    <div id="t-loans"></div>
-    <h3>Talk</h3>
-    <div id="t-chat" class="t-scroll"></div>
-    <div class="t-say"><select id="t-chat-to" aria-label="Say to">${who("Everyone")}</select><input id="t-chat-text" maxlength="200" placeholder="Make a deal…" aria-label="Message" /></div>`;
+    <div id="t-loans"></div></section>`;
 
   const read = (id) => {
     const k = el(id + "-k").value;
@@ -145,16 +203,20 @@ function update() {
   const esc = api.esc;
   const meId = st.you.id;
 
-  el("t-countries").innerHTML = st.players
-    .map((p) => `<div class="party"><span class="swatch" style="background:${api.hex(p.color)}"></span><span class="name"><span class="n">${esc(p.name)}</span>${p.id === meId ? `<span class="tag solid">you</span>` : ""}${!p.connected ? `<span class="tag">away</span>` : ""}</span><span></span><span class="meta">${list(p.id === meId ? myInv() : t.holdings[p.id])}</span></div>`)
-    .join("");
+  setHTML(
+    "t-countries",
+    st.players
+      .map((p) => `<div class="party"><span class="swatch" style="background:${api.hex(p.color)}"></span><span class="name"><span class="n">${esc(p.name)}</span>${p.id === meId ? `<span class="tag solid">you</span>` : ""}${!p.connected ? `<span class="tag">away</span>` : ""}</span><span></span><span class="meta">${list(p.id === meId ? myInv() : t.holdings[p.id])}</span></div>`)
+      .join(""),
+  );
 
   let alert = "";
   if (t.me.aid === "offered")
-    alert += `<div class="locked-note"><b>Aid offer.</b> The market's bankers will give you a workshop and a sawmill for free. In return they keep ${t.rules.aidShare * 100}% of everything you sell to the market for the rest of the game.<div class="t-buttons"><button class="btn small" data-t="aid" data-accept="1">Accept the aid</button><button class="btn ghost small" data-t="aid" data-accept="0">Turn it down</button></div></div>`;
-  if (t.me.aid === "accepted") alert += `<p class="hint">You accepted aid: the bankers keep ${t.rules.aidShare * 100}% of your market sales.</p>`;
-  if (t.tariff) alert += `<p class="hint"><b>Tariff in force:</b> the market pays ${t.rules.tariffCut * 100}% less for goods from countries that started without industry.</p>`;
-  el("t-alert").innerHTML = alert;
+    alert += `<div class="locked-note"><b>Aid offer.</b> The market's bankers will give you a workshop and a mill for free. In return they keep ${t.rules.aidShare * 100}% of everything you sell to the market for the rest of the game.<div class="t-buttons"><button class="btn small" data-t="aid" data-accept="1">Accept the aid</button><button class="btn ghost small" data-t="aid" data-accept="0">Turn it down</button></div></div>`;
+  if (t.me.aid === "accepted") alert += `<p class="t-flag bad">You accepted aid: the bankers keep ${t.rules.aidShare * 100}% of your market sales.</p>`;
+  if (t.tariff) alert += `<p class="t-flag bad"><b>Tariff in force:</b> the market pays ${t.rules.tariffCut * 100}% less for goods from countries that started without a workshop.</p>`;
+  if (t.fair) alert += `<p class="t-flag good"><b>Trade fair:</b> the market is paying ${t.rules.fairBonus * 100}% more for all goods. Sell now.</p>`;
+  setHTML("t-alert", alert);
 
   // Offers
   const offers = t.offers
@@ -166,25 +228,33 @@ function update() {
       }</div>`;
     })
     .join("");
-  el("t-offers").innerHTML = offers || `<p class="small muted">No offers yet. Make one below, or talk first.</p>`;
+  setHTML("t-offers", offers || `<p class="small muted">No offers yet. Make one below, or talk first.</p>`);
 
-  el("t-loans").innerHTML = t.loans
-    .map((l) => `<p class="hint">${l.from === meId ? `You lent a ${l.building} to ${esc(name(l.to))}` : `You hold a ${l.building} lent by ${esc(name(l.from))}`}, due ${api.now() >= l.due ? "now" : "in " + Math.ceil((l.due - api.now()) / 60000) + " min"}.${l.to === meId && !t.autoReturn ? ` <button class="btn ghost small" data-t="giveback" data-to="${l.from}" data-b="${l.building}">Give it back</button>` : ""}</p>`)
-    .join("");
+  setHTML(
+    "t-loans",
+    t.loans
+      .map((l) => `<p class="hint">${l.from === meId ? `You lent a ${l.building} to ${esc(name(l.to))}` : `You hold a ${l.building} lent by ${esc(name(l.from))}`}, due ${api.now() >= l.due ? "now" : "in " + Math.ceil((l.due - api.now()) / 60000) + " min"}.${l.to === meId && !t.autoReturn ? ` <button class="btn ghost small" data-t="giveback" data-to="${l.from}" data-b="${l.building}">Give it back</button>` : ""}</p>`)
+      .join(""),
+  );
 
   // Chat (keep the view pinned to the newest message unless the reader has scrolled up)
   const chat = el("t-chat");
   const pinned = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 30;
-  chat.innerHTML =
-    t.chat.map((c) => `<p><i class="dot" style="background:${color(c.from)}"></i><b>${esc(name(c.from))}</b>${c.to ? ` <span class="tag">${c.to === meId ? "to you" : "to " + esc(name(c.to))}</span>` : ""} ${esc(c.text)}</p>`).join("") ||
-    `<p class="small muted">Nobody has said anything yet.</p>`;
+  setHTML(
+    "t-chat",
+    t.chat.map((c) => `<p><i class="dot" style="background:${color(c.from)}"></i><b>${esc(name(c.from))}</b>${c.to ? ` <span class="tag">${c.to === meId ? "to you" : "to " + esc(name(c.to))}</span>` : ""} ${esc(c.text)}</p>`).join("") || `<p class="small muted">Nobody has said anything yet.</p>`,
+  );
   if (pinned) chat.scrollTop = chat.scrollHeight;
 
-  el("t-news").innerHTML = t.news
-    .slice()
-    .reverse()
-    .map((n) => `<li class="${n.to ? "private" : ""}">${n.to ? `<span class="tag solid">for your eyes only</span> ` : ""}${esc(n.text)}</li>`)
-    .join("");
+  const label = { world: "world news", pay: "payday", market: "market" };
+  setHTML(
+    "t-news",
+    t.news
+      .slice()
+      .reverse()
+      .map((n) => `<li class="${n.to ? "private" : ""} ${n.kind ? "n-" + n.kind : ""}">${n.kind ? `<span class="tag solid">${label[n.kind]}</span> ` : n.to ? `<span class="tag solid">for your eyes only</span> ` : ""}${esc(n.text)}</li>`)
+      .join(""),
+  );
 
   tickTrade();
 }
@@ -193,69 +263,130 @@ function update() {
 export function tickTrade() {
   if (!built || !api || !T() || T().over) return;
   const t = T();
+  const R = t.rules;
   const inv = myInv();
+  const gold = inv.gold ?? 0;
   const striking = t.me.strikeUntil > api.now();
   const busy = t.me.jobs.filter((j) => j.made < j.count && api.now() < j.startedAt + j.count * j.per).length;
 
-  // Worth, growth and what the next payday will bring.
+  // ---- worth
   const worth = worthOf(inv);
-  const growth = worth / t.me.startWorth;
-  const pct = Math.round((growth - 1) * 100);
-  const meals = Math.ceil(t.me.population / 10);
-  const pay = Math.max(0, Math.ceil((t.nextPay - api.now()) / 1000));
-  const taxable = Math.max(0, (inv.gold ?? 0) - t.rules.taxAllowance);
-  el("t-worth").innerHTML = `<div class="t-worth"><div><span class="small muted">Your country is worth</span><br><b class="big">${worth.toLocaleString()}</b> <span class="${pct >= 0 ? "" : "why"}">${pct > 0 ? "▲" : pct < 0 ? "▼" : "•"} ${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct)}% since the start</span></div>${spark([...t.me.history, worth])}</div>
-    <p class="small">People: <b>${t.me.population}</b>, who eat ${meals} food each payday${(inv.food ?? 0) >= meals ? "" : ` <span class="why">(you have ${inv.food ?? 0}: the rest is imported at ${t.rules.importFood} gold each)</span>`}. Next payday in <b>${pay}s</b>: ${t.me.taxFree ? "<b>no tax</b>, thanks to your generosity" : taxable > 0 ? `about ${Math.round(taxable * t.rules.taxRate)} gold in tax, unless you give or lend something first` : "no tax due"}.${(inv.garrison ?? 0) > 0 ? " Your border is guarded." : ` <span class="why">Your border is not guarded.</span>`}</p>`;
+  const pct = Math.round((worth / t.me.startWorth - 1) * 100);
+  const piles = pilesOf(inv);
+  const led = causes(t.me.ledger);
+  const ledOpen = el("t-led")?.open;
+  setHTML(
+    "t-worth",
+    `<div class="t-worth"><div><b class="big">${worth.toLocaleString()}</b><br><span class="${pct >= 0 ? "up" : "down"}">${pct > 0 ? "▲ +" : pct < 0 ? "▼ −" : "• "}${Math.abs(pct)}%</span> <span class="small muted">since the start (${t.me.startWorth.toLocaleString()})</span></div>${spark([...t.me.history, worth])}</div>
+    ${pileBar(piles)}${pileKey(piles)}
+    <details id="t-led" ${ledOpen ? "open" : ""}><summary class="small">Where your growth has come from</summary>${CAUSES.map(([k, text]) => `<div class="t-led"><span>${text}</span><span class="num">${signed(led[k] ?? 0)}</span></div>`).join("")}</details>`,
+  );
 
-  el("t-inv").innerHTML = ORDER.filter((k) => k === "gold" || inv[k] > 0).map((k) => `<span><b>${inv[k] ?? 0}</b> ${t.names[k]}</span>`).join("");
+  // ---- people and payday
+  const groups = Math.ceil(t.me.population / 10);
+  const housed = Math.min(groups, inv.housing ?? 0);
+  const income = housed * R.homeIncome;
+  const dividends = Math.round(Object.entries(t.stocks).reduce((a, [id, st]) => a + (inv["share_" + id] ?? 0) * st.price, 0) * R.dividend);
+  const eaten = Math.min(groups, inv.food ?? 0);
+  const imports = (groups - eaten) * t.importPrice;
+  const tax = t.me.taxFree ? 0 : housed * R.homeTax;
+  const net = income + dividends - imports - tax;
+  const homeless = (groups - housed) * 10;
+  const guarded = (inv.garrison ?? 0) > 0;
+  const buy = (b, text) => `<button class="btn small" data-t="buy" data-building="${b}" ${gold >= R.buildingPrice[b] ? "" : "disabled"}>${text} · ${R.buildingPrice[b]} gold</button>`;
+  setHTML("t-pay-in", `in ${Math.max(0, Math.ceil((t.nextPay - api.now()) / 1000))}s`);
+  setHTML(
+    "t-pay",
+    `<p class="t-people"><b>${t.me.population}</b> people · <b>${inv.housing ?? 0}</b> ${(inv.housing ?? 0) === 1 ? "home" : "homes"} <span class="muted">(10 people each)</span></p>
+    <div class="t-led"><span>Homes <span class="muted">${housed} full × ${R.homeIncome}</span></span><span class="num">${signed(income)}</span></div>
+    <div class="t-led"><span>Shares</span><span class="num">${signed(dividends)}</span></div>
+    <div class="t-led"><span>Food <span class="muted">need ${groups}, have ${inv.food ?? 0}${imports ? `: buying ${groups - eaten} at ${t.importPrice}` : ""}</span></span><span class="num">${imports ? signed(-imports) : `<span class="up">fed</span>`}</span></div>
+    <div class="t-led"><span>Tax <span class="muted">${t.me.taxFree ? "none: you gave or lent" : `${housed} ${housed === 1 ? "home" : "homes"} × ${R.homeTax}`}</span></span><span class="num">${t.me.taxFree ? `<span class="up">0</span>` : signed(-tax)}</span></div>
+    <div class="t-led total"><span>Next payday</span><span class="num">${signed(net)} gold</span></div>
+    ${homeless ? `<p class="t-flag bad"><b>${homeless} people have no home.</b> They eat but earn nothing.</p>` : ""}
+    <div class="t-buttons left">${buy("housing", homeless ? `House ${Math.min(10, homeless)} people` : "Build housing: 10 more people")}</div>
+    <p class="small">${guarded ? `<span class="up">Border guarded.</span> Raiders and migrants are kept out.` : `<span class="down">Border not guarded.</span> Raiders and migrants can get in.`}</p>
+    ${guarded ? "" : `<div class="t-buttons left">${buy("garrison", "Build a border guard")}</div>`}
+    ${t.me.taxFree ? "" : `<p class="small muted">Pay no tax this payday: give away ${R.generousValue} gold's worth, or lend a building.</p>`}`,
+  );
 
-  const stockKey = JSON.stringify([t.stocks, inv.gold, ORDER.filter((k) => k.startsWith("share_")).map((k) => inv[k] ?? 0)]);
-  if (stockKey !== tickTrade.stockKey) {
-    tickTrade.stockKey = stockKey;
-    el("t-stocks").innerHTML = Object.entries(t.stocks)
+  // ---- holdings, in groups
+  const chips = (keys) => keys.filter((k) => inv[k] > 0).map((k) => `<span><b>${inv[k]}</b> ${t.names[k]}</span>`).join("");
+  setHTML(
+    "t-inv",
+    `<div class="t-group k-gold"><label>Gold</label><div class="t-inv"><span><b>${gold}</b> Gold</span></div></div>` +
+      PILES.slice(1)
+        .map(([k, text]) => `<div class="t-group k-${k}"><label>${text}</label><div class="t-inv">${chips(GROUPS[k]) || `<em class="muted small">none</em>`}</div></div>`)
+        .join(""),
+  );
+
+  // ---- make
+  const usual = (g) => t.recipes[g].price;
+  const priceOf = (g) => `${t.prices[g]}${t.prices[g] !== usual(g) ? ` ${arrow(t.prices[g], usual(g))}` : ""}`;
+  let ready = "";
+  let later = "";
+  for (const [good, r] of Object.entries(t.recipes)) {
+    const missing = ["workshop", ...r.needs].filter((b) => !(inv[b] > 0)).map(low);
+    const can = Math.min(...Object.entries(r.uses).map(([k, n]) => Math.floor((inv[k] ?? 0) / n)));
+    const why = missing.length ? `missing: ${missing.join(", ")}` : striking ? "workers on strike" : busy >= (inv.workshop ?? 0) ? "workshops busy" : can < 1 ? "not enough materials" : "";
+    const needs = ["workshop", ...r.needs].map((b) => (inv[b] > 0 ? low(b) : `<s>${low(b)}</s>`)).join(" + ");
+    const btn = (n, text) => `<button class="btn small" data-t="make" data-good="${good}" data-n="${n}" ${why || can < n ? "disabled" : ""}>${text}</button>`;
+    const line = `<div class="t-line"><div><b>${t.names[good]}</b> <span class="muted">from ${words(r.uses)} · sells for</span> <b class="num">${priceOf(good)}</b><br><span class="small">Needs: ${needs}</span>${why ? ` <span class="small down">(${why})</span>` : ""}</div><span class="t-buttons">${btn(1, "Make 1")}${btn(5, "Make 5")}</span></div>`;
+    if (missing.length) later += line;
+    else ready += line;
+  }
+  const moreOpen = el("t-more") ? el("t-more").open : !ready;
+  setHTML("t-make", (ready || `<p class="small muted">You cannot make anything yet. You need a workshop and the right building: build, borrow or bargain for them.</p>`) + (later ? `<details id="t-more" ${moreOpen ? "open" : ""}><summary class="small">Things you cannot make yet (${later.split("t-line").length - 1})</summary>${later}</details>` : ""));
+
+  setHTML(
+    "t-jobs",
+    (striking ? `<p class="t-flag bad"><b>Strike!</b> Your workshops are standing still for another ${Math.ceil((t.me.strikeUntil - api.now()) / 1000)} seconds.</p>` : "") +
+      t.me.jobs
+        .map((j) => {
+          const done = Math.min(1, Math.max(0, (api.now() - j.startedAt) / (j.count * j.per)));
+          return done < 1 ? `<div class="t-job"><span>Making ${j.count} ${t.names[j.good].toLowerCase()}</span><span class="bar"><i style="width:${Math.round(done * 20) * 5}%"></i></span></div>` : "";
+        })
+        .join(""),
+  );
+
+  // ---- market
+  const keep = el("t-amber")?.checked;
+  let market = "";
+  const goods = Object.keys(t.recipes).filter((g) => inv[g] > 0);
+  for (const g of goods) {
+    const size = t.batch[g];
+    market += `<div class="t-line"><div><b>${inv[g]} ${t.names[g]}</b> <span class="muted">at</span> <b class="num">${priceOf(g)}</b> <span class="muted">each</span>${size !== R.batch ? ` <span class="tag solid t-odd">market wants ${size} at a time</span>` : ""}</div><button class="btn small" data-t="sell" data-good="${g}" ${inv[g] >= size ? "" : "disabled"}>Sell ${size} for ${Math.round(t.prices[g] * size * (t.fair ? 1 + R.fairBonus : 1))}</button></div>`;
+  }
+  if (!goods.length) market += `<p class="small muted">You have no goods to sell yet. The market usually buys ${R.batch} at a time, and now and then 3 or 1.</p>`;
+  if (inv.amber > 0 && goods.length) market += `<label class="t-check"><input type="checkbox" id="t-amber" ${keep ? "checked" : ""}/> Set 1 amber into the next sale ${t.me.knowsAmber ? `<b>(sells for ${R.amberMultiplier} times the price)</b>` : `<span class="muted">(nobody has told you what this does)</span>`}</label>`;
+  market += `<div class="t-line"><div class="small">Sell raw materials for only ${R.rawFloor} gold each</div><span class="t-buttons">${RAWLIST.filter((k) => inv[k] > 0).map((k) => `<button class="btn ghost small" data-t="raw" data-item="${k}">1 ${k}</button>`).join("") || `<span class="small muted">none to sell</span>`}</span></div>`;
+  setHTML("t-market", market);
+
+  setHTML(
+    "t-build",
+    `<div class="t-buttons left">${Object.entries(R.buildingPrice)
+      .filter(([b]) => b !== "housing" && b !== "garrison")
+      .map(([b, price]) => `<button class="btn ghost small" data-t="buy" data-building="${b}" ${gold >= price ? "" : "disabled"}>${t.names[b]} · ${price}</button>`)
+      .join("")}</div><p class="small muted">A workshop makes one thing at a time. Each other building lets your workshops make new products.</p>`,
+  );
+
+  // ---- stock exchange
+  const follows = { wood: "timber, planks, furniture", metal: "ore, tools, machinery", farm: "wool, cloth, grain, food", energy: "coal, electricity" };
+  setHTML(
+    "t-stocks",
+    Object.entries(t.stocks)
       .map(([id, st]) => {
         const own = inv["share_" + id] ?? 0;
-        const b = (n, label, ok) => `<button class="btn ghost small" data-t="stock" data-id="${id}" data-n="${n}" ${ok ? "" : "disabled"}>${label}</button>`;
-        return `<div class="t-line"><div><b>${t.stockNames[id]}</b> <span class="num">${st.price}</span> <span class="${st.price >= st.prev ? "" : "why"}">${st.price > st.prev ? "▲" : st.price < st.prev ? "▼" : "•"}</span>${own ? ` <span class="muted">· you own ${own}</span>` : ""}</div><span class="t-buttons">${b(1, "Buy 1", (inv.gold ?? 0) >= st.price)}${b(5, "Buy 5", (inv.gold ?? 0) >= st.price * 5)}${b(-1, "Sell 1", own >= 1)}${b(-own, "Sell all", own >= 1)}</span></div>`;
+        const change = Math.round((st.price / st.prev - 1) * 100);
+        const trend = st.price >= st.hist[0] ? "up" : "down";
+        const b = (n, text, ok, cls = "ghost") => `<button class="btn ${cls} small" data-t="stock" data-id="${id}" data-n="${n}" ${ok ? "" : "disabled"}>${text}</button>`;
+        return `<div class="t-stock s-${id}"><div class="who"><b>${t.stockNames[id]}</b><br><span class="small muted">${follows[id]}</span></div>
+          <div class="px"><b class="num">${st.price}</b> <span class="${change >= 0 ? "up" : "down"}">${change > 0 ? "▲ +" : change < 0 ? "▼ −" : "• "}${Math.abs(change)}%</span><br><span class="${trend}">${spark(st.hist.length > 1 ? st.hist : [st.price, st.price], 90, 20)}</span></div>
+          <div class="own small">${own ? `You own <b>${own}</b><br>worth ${(own * st.price).toLocaleString()}, pays ${Math.round(own * st.price * R.dividend)}` : `<span class="muted">You own none</span>`}</div>
+          <span class="t-buttons">${b(1, "Buy 1", gold >= st.price, "")}${b(5, "Buy 5", gold >= st.price * 5, "")}${b(-1, "Sell 1", own >= 1)}${b(-own, "Sell all", own >= 1)}</span></div>`;
       })
-      .join("");
-  }
-
-  const key = JSON.stringify([inv, t.prices, striking, busy, t.me.knowsAmber, t.tariff]);
-  if (key !== tickTrade.key) {
-    tickTrade.key = key;
-    const keep = el("t-amber")?.checked;
-    let make = "";
-    for (const [good, r] of Object.entries(t.recipes)) {
-      const missing = ["workshop", ...r.needs].filter((b) => !(inv[b] > 0)).map(low);
-      const can = Math.min(...Object.entries(r.uses).map(([k, n]) => Math.floor((inv[k] ?? 0) / n)));
-      const why = missing.length ? `you are missing: ${missing.join(" and ")}` : striking ? "workers on strike" : busy >= (inv.workshop ?? 0) ? "workshops busy" : can < 1 ? "not enough materials" : "";
-      // Always show everything the product needs, so the list reads the same for every player.
-      const needs = ["workshop", ...r.needs].map((b) => (inv[b] > 0 ? low(b) : `<s>${low(b)}</s>`)).join(" + ");
-      const btn = (n, label) => `<button class="btn small" data-t="make" data-good="${good}" data-n="${n}" ${why || can < n ? "disabled" : ""}>${label}</button>`;
-      make += `<div class="t-line"><div><b>${t.names[good]}</b> <span class="muted">from ${words(r.uses)} · sells for ${t.prices[good]}</span><br><span class="small">Needs: ${needs}</span>${why ? ` <span class="small why">(${why})</span>` : ""}</div><span class="t-buttons">${btn(1, "Make 1")}${btn(5, "Make 5")}</span></div>`;
-    }
-    el("t-make").innerHTML = make;
-
-    let market = "";
-    const goods = Object.keys(t.recipes).filter((g) => inv[g] > 0);
-    for (const g of goods)
-      market += `<div class="t-line"><div><b>${inv[g]} ${t.names[g]}</b></div><button class="btn small" data-t="sell" data-good="${g}" ${inv[g] >= t.rules.batch ? "" : "disabled"}>Sell ${t.rules.batch} for ${t.prices[g] * t.rules.batch}</button></div>`;
-    if (!goods.length) market += `<p class="small muted">You have no goods to sell yet. The market buys goods in batches of ${t.rules.batch}.</p>`;
-    if (inv.amber > 0 && goods.length) market += `<label class="t-check"><input type="checkbox" id="t-amber" ${keep ? "checked" : ""}/> Set 1 amber into the next batch ${t.me.knowsAmber ? `<b>(sells for ${t.rules.amberMultiplier} times the price)</b>` : `<span class="muted">(nobody has told you what this does)</span>`}</label>`;
-    market += `<div class="t-line"><div class="small">Sell raw materials to the market for only ${t.rules.rawFloor} gold each</div><span class="t-buttons">${RAWLIST.filter((k) => inv[k] > 0).map((k) => `<button class="btn ghost small" data-t="raw" data-item="${k}">1 ${k}</button>`).join("") || `<span class="small muted">none to sell</span>`}</span></div>`;
-    market += `<div class="t-line"><div class="small">Build</div><span class="t-buttons">${Object.entries(t.rules.buildingPrice).map(([b, price]) => `<button class="btn ghost small" data-t="buy" data-building="${b}" ${(inv.gold ?? 0) >= price ? "" : "disabled"}>${t.names[b]} ${price}</button>`).join("")}</span></div>`;
-    el("t-market").innerHTML = market;
-  }
-
-  el("t-jobs").innerHTML =
-    (striking ? `<p class="hint"><b>Strike!</b> Your workshops are standing still for another ${Math.ceil((t.me.strikeUntil - api.now()) / 1000)} seconds.</p>` : "") +
-    t.me.jobs
-      .map((j) => {
-        const done = Math.min(1, Math.max(0, (api.now() - j.startedAt) / (j.count * j.per)));
-        return done < 1 ? `<div class="t-job"><span>Making ${j.count} ${t.names[j.good].toLowerCase()}</span><span class="bar"><i style="width:${Math.round(done * 100)}%"></i></span></div>` : "";
-      })
-      .join("");
+      .join(""),
+  );
 }
 
 // ---------------------------------------------------------------- when the market closes
@@ -277,29 +408,53 @@ function drawResult() {
   const esc = api.esc;
   const startKind = { A: "Workshops, industry and money, hardly any raw materials", B: "Plenty of raw materials, no workshop", C: "A little raw material, no workshop" };
   const rows = r.rows.slice().sort((a, b) => b.growth - a.growth);
+  const who = (x) => `<i class="key" style="background:${color(x.id)}"></i> ${esc(name(x.id))}${x.id === st.you.id ? ` <span class="tag solid">you</span>` : ""}`;
+  const top = Math.max(...rows.map((x) => Math.max(x.wealth, x.startWealth)));
+  const short = { goods: "Goods", deals: "Deals", income: "Homes", dividends: "Share payouts", shares: "Share prices", food: "Food", tax: "Tax", events: "Events" };
+  /** One sentence on what made and what cost each country the most. */
+  const story = (x) => {
+    const l = causes(x.ledger);
+    const sorted = CAUSES.map(([k, text]) => [text, l[k] ?? 0]).sort((a, b) => b[1] - a[1]);
+    const best = sorted[0];
+    const worst = sorted.at(-1);
+    return `${best[1] > 0 ? `Gained most from <b>${best[0].toLowerCase()}</b> (${signed(best[1])}).` : "Gained from nothing."} ${worst[1] < 0 ? `Lost most to <b>${worst[0].toLowerCase()}</b> (${signed(worst[1])}).` : ""}`;
+  };
   el("left").innerHTML = `<h3>Countries</h3>` + st.players.map((p) => `<div class="party"><span class="swatch" style="background:${api.hex(p.color)}"></span><span class="name"><span class="n">${esc(p.name)}</span></span><span></span><span class="meta">${list(t.holdings[p.id])}</span></div>`).join("");
   el("tradeboard").innerHTML = `
     <div class="t-banner"><h2>${esc(name(r.winner))} wins</h2><p>Their country grew the most from where it started.${r.richest !== r.winner ? ` The richest country at the end was ${esc(name(r.richest))}.` : " It also ended up the richest."}</p></div>
-    <h3>Where everyone started, and where they ended</h3>
+    <section class="t-card c-country"><h3>Where everyone started, and where they ended</h3>
     <table class="grid"><tr><th>Country</th><th>Started with</th><th>Worth at start</th><th>Worth at end</th><th>Growth</th></tr>
-    ${rows.map((x) => `<tr><td><i class="key" style="background:${color(x.id)}"></i> ${esc(name(x.id))}${x.id === st.you.id ? ` <span class="tag solid">you</span>` : ""}</td><td style="text-align:left"><b>${startKind[x.tier]}</b><br><span class="small muted">${list(x.start)}</span></td><td class="num">${x.startWealth}</td><td class="num">${x.wealth}<br>${spark(x.history, 80, 22)}</td><td class="num ${x.id === r.winner ? "top" : ""}">× ${x.growth.toFixed(2)}</td></tr>`).join("")}</table>
-    <p class="small muted">Worth counts gold, goods at their usual price, raw materials at the market's low price, buildings at cost and shares at their final price. The small lines show each country's worth at every payday. Nobody was told the starts were unequal.</p>
-    <h3>What happened</h3>
+    ${rows.map((x) => `<tr><td>${who(x)}</td><td style="text-align:left"><b>${startKind[x.tier]}</b><br><span class="small muted">${list(x.start)}</span></td><td class="num">${x.startWealth.toLocaleString()}</td><td class="num">${x.wealth.toLocaleString()}<br>${spark(x.history, 80, 22)}</td><td class="num ${x.id === r.winner ? "top" : ""}">× ${x.growth.toFixed(2)}<br>${signed(x.wealth - x.startWealth)}</td></tr>`).join("")}</table>
+    <p class="small muted">The small lines show each country's worth at every payday. Nobody was told the starts were unequal.</p></section>
+
+    <section class="t-card c-make"><h3>Where each country's growth came from</h3>
+    <div class="t-wide"><table class="grid t-causes"><tr><th>Country</th>${CAUSES.map(([k]) => `<th>${short[k]}</th>`).join("")}<th>Total</th></tr>
+    ${rows.map((x) => { const l = causes(x.ledger); return `<tr><td>${who(x)}</td>${CAUSES.map(([k]) => `<td class="num">${signed(l[k] ?? 0)}</td>`).join("")}<td class="num top">${signed(x.wealth - x.startWealth)}</td></tr>`; }).join("")}</table></div>
+    ${rows.map((x) => `<p class="small">${who(x)}: ${story(x)}</p>`).join("")}
+    <p class="small muted"><b>Goods</b>: what making and selling added. <b>Deals</b>: swaps, gifts and loans with other countries, counted at what the things were worth. <b>Homes</b>: payday income. <b>Share payouts</b> and <b>share prices</b>: the stock exchange. <b>Food</b> and <b>tax</b>: what payday took. <b>Events</b>: finds, raids, aid and disasters.</p></section>
+
+    <section class="t-card c-stocks"><h3>What each country's worth is made of</h3>
+    ${rows.map((x) => `<div class="t-made"><div>${who(x)}</div><div><span class="small muted">Start · ${x.startWealth.toLocaleString()}</span>${pileBar(x.partsStart, top)}<span class="small muted">End · ${x.wealth.toLocaleString()}</span>${pileBar(x.partsEnd, top)}${pileKey(x.partsEnd)}</div></div>`).join("")}
+    <p class="small muted">Worth counts gold, goods at their usual price, raw materials at the market's low price, buildings at cost and shares at their final price.</p></section>
+
+    <section class="t-card c-deals"><h3>What happened</h3>
     <p>${r.swaps} safe ${r.swaps === 1 ? "swap" : "swaps"} and ${r.gifts} ${r.gifts === 1 ? "thing" : "things"} sent on trust.
     ${rawLine(r, t)}</p>
     ${r.loans.length ? `<p><b>Loans:</b> ${r.loans.map((l) => `${esc(name(l.from))} lent a ${l.building} to ${esc(name(l.to))}, and it ${l.status === "returned" ? "came back" : "<b>never came back</b>"}`).join("; ")}.</p>` : ""}
     <p class="small muted">${t.open ? "Holdings were visible to everyone." : "Holdings were hidden during the game."} ${t.autoReturn ? "Lent buildings came back by themselves." : "Lent buildings only came back if the borrower returned them."}</p>
-    <h3>Worth talking about</h3>
+    <h3>Every deal, in order</h3>
+    <ol class="t-scroll" id="t-news">${r.deals.map((d) => `<li>${d.kind === "swap" ? `${esc(name(d.from))} gave ${words(d.give)} to ${esc(name(d.to))} for ${words(d.want)}` : `${esc(name(d.from))} sent ${words(d.give)} to ${esc(name(d.to))} on trust`}</li>`).join("") || "<li>No deals were made.</li>"}</ol></section>
+
+    <section class="t-card c-talk"><h3>Worth talking about</h3>
     <ol class="plain-list">
       <li>Was it fair? Who could make goods from the first second, and who could not?</li>
       <li>Who really set the price of raw materials: the countries selling them, or the country buying?</li>
       <li>Did anyone break a promise, or keep quiet about what something was worth?</li>
       <li>Much of world trade works like this. What would have made the game fairer, and would the richest player have agreed to it?</li>
-    </ol>
-    <h3>Every deal, in order</h3>
-    <ol class="t-scroll" id="t-news">${r.deals.map((d) => `<li>${d.kind === "swap" ? `${esc(name(d.from))} gave ${words(d.give)} to ${esc(name(d.to))} for ${words(d.want)}` : `${esc(name(d.from))} sent ${words(d.give)} to ${esc(name(d.to))} on trust`}</li>`).join("") || "<li>No deals were made.</li>"}</ol>`;
+    </ol></section>`;
   el("right").innerHTML = `<h3>The conversation</h3><div class="t-scroll tall">${t.chat.map((c) => `<p><i class="dot" style="background:${color(c.from)}"></i><b>${esc(name(c.from))}</b> ${esc(c.text)}</p>`).join("") || `<p class="small muted">Nothing was said.</p>`}</div>
     ${st.you.mayHost ? `<div class="stack"><button class="btn wide" id="t-again">Back to the lobby</button></div>` : `<p class="hint">Waiting for the host.</p>`}
+    <h3>What the news said</h3><ol class="t-scroll tall">${t.news.filter((n) => n.kind === "world" || (!n.kind && !n.to)).slice().reverse().map((n) => `<li class="${n.kind ? "n-" + n.kind : ""}">${esc(n.text)}</li>`).join("")}</ol>
     <p class="small muted" style="margin-top:14px">Trade and Treachery is inspired by Christian Aid's Trading Game.</p>`;
   if (el("t-again")) el("t-again").onclick = () => api.send({ type: "newGame" });
 }
