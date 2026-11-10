@@ -85,6 +85,17 @@ export interface Offer {
   want: Inv;
 }
 
+export interface Loan {
+  id: number;
+  from: string;
+  to: string;
+  building: string;
+  due: number;
+  status: "out" | "returned" | "kept";
+  /** whether the due date has been dealt with */
+  called: boolean;
+}
+
 export interface Deal {
   t: number;
   kind: "swap" | "gift";
@@ -108,6 +119,10 @@ export interface TradeState {
   nextId: number;
   seed: number;
   over: boolean;
+  /** Host settings: can everyone see everyone's holdings, and do lent buildings come back by themselves? */
+  open: boolean;
+  autoReturn: boolean;
+  loans: Loan[];
 }
 
 export interface Who {
@@ -160,7 +175,7 @@ function say(t: TradeState, now: number, text: string, to: string | null = null)
 
 // ---------------------------------------------------------------- start
 
-export function startTrade(players: Who[], lengthSec: number, seed: number, now: number): TradeState {
+export function startTrade(players: Who[], lengthSec: number, seed: number, now: number, opts: { open: boolean; autoReturn: boolean } = { open: true, autoReturn: true }): TradeState {
   const rng = mulberry32(seed);
   const tiers = shuffle(TIERS[Math.min(5, Math.max(3, players.length))], rng);
   const length = lengthSec * 1000;
@@ -181,6 +196,9 @@ export function startTrade(players: Who[], lengthSec: number, seed: number, now:
     nextId: 1,
     seed,
     over: false,
+    open: opts.open,
+    autoReturn: opts.autoReturn,
+    loans: [],
   };
   players.forEach((p, i) => {
     const inv = { ...STARTS[tiers[i]] };
@@ -258,7 +276,26 @@ export function tradeTick(t: TradeState, who: Who[], now: number) {
       say(t, now, `New tariff: for a while, the market pays ${TRADE.tariffCut * 100}% less for goods from countries that started without industry. Raw materials are not affected.`);
     }
   }
+  // Loans falling due.
+  for (const loan of t.loans) {
+    if (loan.called || loan.status !== "out" || now < loan.due || now >= t.endsAt) continue;
+    loan.called = true;
+    const borrower = t.players[loan.to];
+    if (!t.autoReturn) {
+      say(t, now, `The loan of your ${loan.building} to ${name(loan.to)} is due. Whether it comes back is up to them.`, loan.from);
+      say(t, now, `Your loan of a ${loan.building} from ${name(loan.from)} is due. Send it back, or do not.`, loan.to);
+    } else if ((borrower.inv[loan.building] ?? 0) > 0) {
+      move(borrower.inv, t.players[loan.from].inv, { [loan.building]: 1 });
+      loan.status = "returned";
+      say(t, now, `The ${loan.building} you lent to ${name(loan.to)} has come back.`, loan.from);
+      say(t, now, `The ${loan.building} you borrowed from ${name(loan.from)} has gone back.`, loan.to);
+    } else {
+      loan.status = "kept";
+      say(t, now, `The ${loan.building} you lent to ${name(loan.to)} could not be returned: they no longer have it.`, loan.from);
+    }
+  }
   if (now >= t.endsAt) {
+    for (const loan of t.loans) if (loan.status === "out") loan.status = "kept";
     t.over = true;
     t.offers = [];
     say(t, t.endsAt, "The market has closed.");
@@ -267,7 +304,7 @@ export function tradeTick(t: TradeState, who: Who[], now: number) {
 
 /** When this game next needs the clock: the next event, the next finished item is not needed (it is worked out on demand). */
 export function tradeAlarm(t: TradeState): number {
-  return Math.min(t.endsAt, ...t.events.filter((e) => !e.done).map((e) => e.at));
+  return Math.min(t.endsAt, ...t.events.filter((e) => !e.done).map((e) => e.at), ...t.loans.filter((l) => !l.called && l.status === "out").map((l) => l.due));
 }
 
 // ---------------------------------------------------------------- what players can do
@@ -311,7 +348,7 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
         }
       }
       p.inv.gold = (p.inv.gold ?? 0) + pay;
-      say(t, now, `${name(me)} sells a batch of ${msg.good} to the market.`);
+      if (t.open) say(t, now, `${name(me)} sells a batch of ${msg.good} to the market.`);
       return null;
     }
     case "t.sellRaw": {
@@ -327,7 +364,7 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
       if ((p.inv.gold ?? 0) < price) return `A ${msg.building} costs ${price} gold.`;
       p.inv.gold -= price;
       p.inv[msg.building] = (p.inv[msg.building] ?? 0) + 1;
-      say(t, now, `${name(me)} builds a ${msg.building}.`);
+      if (t.open) say(t, now, `${name(me)} builds a ${msg.building}.`);
       return null;
     }
     case "t.aid": {
@@ -363,7 +400,7 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
       move(p.inv, giver.inv, offer.want);
       t.offers = t.offers.filter((o) => o !== offer);
       t.deals.push({ t: now, kind: "swap", from: offer.from, to: me, give: offer.give, want: offer.want });
-      say(t, now, `Deal: ${name(offer.from)} gives ${describe(offer.give)} to ${name(me)} for ${describe(offer.want)}.`);
+      say(t, now, t.open ? `Deal: ${name(offer.from)} gives ${describe(offer.give)} to ${name(me)} for ${describe(offer.want)}.` : `${name(offer.from)} and ${name(me)} have made a deal.`);
       return null;
     }
     case "t.cancel": {
@@ -377,7 +414,24 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
       if (!has(p.inv, give)) return "You do not have that to send.";
       move(p.inv, t.players[msg.to].inv, give);
       t.deals.push({ t: now, kind: "gift", from: me, to: msg.to, give, want: {} });
-      say(t, now, `${name(me)} sends ${describe(give)} to ${name(msg.to)}.`);
+      // Sending a borrowed building back to its owner settles the loan.
+      for (const [k, n] of Object.entries(give)) {
+        let left = n;
+        for (const loan of t.loans) if (left > 0 && loan.status === "out" && loan.to === me && loan.from === msg.to && loan.building === k) [loan.status, left] = ["returned", left - 1];
+      }
+      if (t.open) say(t, now, `${name(me)} sends ${describe(give)} to ${name(msg.to)}.`);
+      else say(t, now, `${name(me)} has sent you ${describe(give)}.`, msg.to);
+      return null;
+    }
+    case "t.lend": {
+      const minutes = Math.floor(Number(msg.minutes));
+      if (!(BUILDINGS as readonly string[]).includes(msg.building) || !t.players[msg.to] || msg.to === me || !(minutes >= 1 && minutes <= 10)) return "Choose a building, a country and how long to lend it for.";
+      if (!(p.inv[msg.building] ?? 0)) return "You do not have that building to lend.";
+      move(p.inv, t.players[msg.to].inv, { [msg.building]: 1 });
+      t.loans.push({ id: t.nextId++, from: me, to: msg.to, building: msg.building, due: now + minutes * 60_000, status: "out", called: false });
+      const terms = t.autoReturn ? "It will come back by itself." : "Giving it back is up to the borrower.";
+      say(t, now, `You lent a ${msg.building} to ${name(msg.to)} for ${minutes} ${minutes === 1 ? "minute" : "minutes"}. ${terms}`, me);
+      say(t, now, `${name(me)} has lent you a ${msg.building} for ${minutes} ${minutes === 1 ? "minute" : "minutes"}. ${terms}`, msg.to);
       return null;
     }
     case "t.chat": {
@@ -425,6 +479,7 @@ export function tradeView(t: TradeState, me: string, now: number) {
       rawEarly: rate(t.startedAt, mid),
       rawLate: rate(mid, t.endsAt + 1),
       deals: t.deals.slice(-60),
+      loans: t.loans,
       gifts: t.deals.filter((d) => d.kind === "gift").length,
       swaps: t.deals.filter((d) => d.kind === "swap").length,
     };
@@ -438,8 +493,12 @@ export function tradeView(t: TradeState, me: string, now: number) {
     recipes: RECIPES,
     names: NAMES,
     rules: TRADE,
-    // Like tables in a room: everyone can see what everyone else is holding.
-    holdings: Object.fromEntries(Object.entries(t.players).map(([id, q]) => [id, q.inv])),
+    open: t.open,
+    autoReturn: t.autoReturn,
+    // With open books everyone sees everyone's holdings, like tables in a room. Otherwise only your own,
+    // until the market closes.
+    holdings: Object.fromEntries(Object.entries(t.players).filter(([id]) => t.open || t.over || id === me).map(([id, q]) => [id, q.inv])),
+    loans: t.loans.filter((l) => l.status === "out" && (l.from === me || l.to === me)),
     me: p ? { jobs: p.jobs, strikeUntil: p.strikeUntil, knowsAmber: p.knowsAmber, aid: p.aid } : null,
     offers: t.offers.filter(mine),
     chat: t.chat.filter(mine),

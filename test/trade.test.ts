@@ -107,3 +107,60 @@ describe("Trade and Treachery", () => {
     expect(store.room.trade).toBeNull();
   });
 });
+
+describe("Trade and Treachery: the host's two switches", () => {
+  function custom(settings: object) {
+    const made = table(3);
+    handle(made.store, made.ps[0].id, { type: "settings", ...settings }, 1500, newId);
+    handle(made.store, made.ps[0].id, { type: "start" }, 2000, newId);
+    const t = made.store.room.trade!;
+    const by = (tier: string) => made.ps.find((p) => t.players[p.id].tier === tier)!;
+    return { ...made, t, rich: by("A"), poor: by("C") };
+  }
+
+  it("can hide everyone else's holdings, and keeps deal details out of the news", () => {
+    const { store, t, rich, poor } = custom({ tradeOpen: false });
+    const seen = view(store.room, poor.id, 2100).trade!;
+    expect(Object.keys(seen.holdings)).toEqual([poor.id]);
+    act(store, rich, { type: "t.offer", to: poor.id, give: { gold: 50 }, want: { timber: 1 } }, 2200);
+    act(store, poor, { type: "t.accept", id: t.offers[0].id }, 2300);
+    act(store, rich, { type: "t.buy", building: "loom" }, 2400);
+    const news = t.news.filter((x) => x.to === null).map((x) => x.text).join(" | ");
+    expect(news).toContain("have made a deal");
+    expect(news).not.toMatch(/50 gold|builds/);
+    for (let i = 0; i < 20 && store.room.phase === "trading"; i++) onAlarm(store, nextAlarm(store.room)!);
+    expect(Object.keys(view(store.room, poor.id, t.endsAt + 1).trade!.holdings)).toHaveLength(3); // revealed at the end
+  });
+
+  it("brings a lent building back by itself when that is switched on", () => {
+    const { store, t, rich, poor } = custom({ tradeAutoReturn: true });
+    expect(act(store, rich, { type: "t.lend", to: poor.id, building: "workshop", minutes: 1 }, 3000)).toBeNull();
+    expect(t.players[poor.id].inv.workshop).toBe(1);
+    expect(nextAlarm(store.room)).toBe(63_000);
+    onAlarm(store, 63_000);
+    expect(t.players[poor.id].inv.workshop).toBe(0);
+    expect(t.players[rich.id].inv.workshop).toBe(2);
+    expect(t.loans[0].status).toBe("returned");
+  });
+
+  it("lets a poor country keep a borrowed building, and win by it, when that is switched off", () => {
+    const { store, t, rich, poor } = custom({ tradeAutoReturn: false });
+    act(store, rich, { type: "t.lend", to: poor.id, building: "workshop", minutes: 1 }, 3000);
+    onAlarm(store, 63_000);
+    expect(t.players[poor.id].inv.workshop).toBe(1); // still there: returning it is a choice
+    expect(t.news.some((x) => x.to === poor.id && x.text.includes("or do not"))).toBe(true);
+    for (let i = 0; i < 20 && store.room.phase === "trading"; i++) onAlarm(store, nextAlarm(store.room)!);
+    const result = view(store.room, poor.id, t.endsAt + 1).trade!.result!;
+    expect(result.loans[0].status).toBe("kept");
+    expect(result.winner).toBe(poor.id);
+    expect(result.rows.find((r) => r.id === poor.id)!.growth).toBeGreaterThan(2);
+  });
+
+  it("settles the loan when the borrower does send it back", () => {
+    const { store, t, rich, poor } = custom({ tradeAutoReturn: false });
+    act(store, rich, { type: "t.lend", to: poor.id, building: "forge", minutes: 2 }, 3000);
+    act(store, poor, { type: "t.send", to: rich.id, give: { forge: 1 } }, 9000);
+    expect(t.loans[0].status).toBe("returned");
+    expect(view(store.room, rich.id, 9001).trade!.loans).toHaveLength(0);
+  });
+});

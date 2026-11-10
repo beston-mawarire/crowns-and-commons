@@ -560,6 +560,8 @@ function tradeLobby(host) {
   const ready = !bots && st.players.length >= r.minPlayers;
   return `
     <div class="field"><label for="tlen">Length of the game</label><select id="tlen" ${host ? "" : "disabled"}>${r.lengths.map((v) => `<option value="${v}" ${v === (st.settings.tradeSec ?? r.defaultLength) ? "selected" : ""}>${v / 60} minutes</option>`).join("")}</select></div>
+    <div class="field"><label for="topen">Can you see what other countries hold?</label><select id="topen" ${host ? "" : "disabled"}><option value="1" ${st.settings.tradeOpen === false ? "" : "selected"}>Yes: everyone's holdings are visible</option><option value="0" ${st.settings.tradeOpen === false ? "selected" : ""}>No: you only see your own, so people can bluff</option></select></div>
+    <div class="field"><label for="tret">Lent buildings</label><select id="tret" ${host ? "" : "disabled"}><option value="1" ${st.settings.tradeAutoReturn === false ? "" : "selected"}>Come back by themselves when the loan ends</option><option value="0" ${st.settings.tradeAutoReturn === false ? "selected" : ""}>Only come back if the borrower returns them</option></select></div>
     ${
       host
         ? `<button class="btn big wide" id="start" ${ready ? "" : "disabled"}>Start the game</button>
@@ -823,6 +825,8 @@ function wireRight(el) {
     };
   el.querySelectorAll("[data-color]").forEach((b) => (b.onclick = () => send({ type: "profile", color: b.dataset.color })));
   if (el.querySelector("#mode")) el.querySelector("#mode").onchange = (e) => send({ type: "settings", mode: e.target.value });
+  if (el.querySelector("#topen")) el.querySelector("#topen").onchange = (e) => send({ type: "settings", tradeOpen: e.target.value === "1" });
+  if (el.querySelector("#tret")) el.querySelector("#tret").onchange = (e) => send({ type: "settings", tradeAutoReturn: e.target.value === "1" });
   if (el.querySelector("#tlen")) el.querySelector("#tlen").onchange = (e) => send({ type: "settings", tradeSec: Number(e.target.value) });
   if (el.querySelector("#quick")) el.querySelector("#quick").onchange = (e) => send({ type: "settings", quick: e.target.value === "1" });
   if (el.querySelector("#plan")) el.querySelector("#plan").onchange = (e) => send({ type: "settings", planSec: Number(e.target.value) });

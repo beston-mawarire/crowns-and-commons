@@ -64,7 +64,7 @@ export interface Room {
   round: 1 | 2;
   attempt: number;
   hostId: string;
-  settings: { simSec: number; planSec: number; quick: boolean; mode?: "election" | "trade"; tradeSec?: number };
+  settings: { simSec: number; planSec: number; quick: boolean; mode?: "election" | "trade"; tradeSec?: number; tradeOpen?: boolean; tradeAutoReturn?: boolean };
   /** The Trade and Treachery mode keeps its whole state here. */
   trade?: TradeState | null;
   players: Player[];
@@ -193,6 +193,8 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
       if ((RULES.planChoices as readonly number[]).includes(msg.planSec)) room.settings.planSec = msg.planSec;
       if (msg.mode === "election" || msg.mode === "trade") room.settings.mode = msg.mode;
       if (TRADE.lengths.includes(msg.tradeSec)) room.settings.tradeSec = msg.tradeSec;
+      if (typeof msg.tradeOpen === "boolean") room.settings.tradeOpen = msg.tradeOpen;
+      if (typeof msg.tradeAutoReturn === "boolean") room.settings.tradeAutoReturn = msg.tradeAutoReturn;
       if (typeof msg.quick === "boolean" && msg.quick !== room.settings.quick) {
         room.settings.quick = msg.quick;
         // A quick game comes with shorter counts, a full game with the full five minutes.
@@ -226,7 +228,10 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
         if (room.players.some((p) => p.bot)) return "Trade and Treachery is for people only. Remove the bots first.";
         if (room.players.length < TRADE.minPlayers) return "Trade and Treachery needs at least three players.";
         room.match++;
-        room.trade = startTrade(room.players, room.settings.tradeSec ?? TRADE.defaultLength, (room.seed + room.match * 7919 + (now % 100000)) >>> 0, now);
+        room.trade = startTrade(room.players, room.settings.tradeSec ?? TRADE.defaultLength, (room.seed + room.match * 7919 + (now % 100000)) >>> 0, now, {
+          open: room.settings.tradeOpen ?? true,
+          autoReturn: room.settings.tradeAutoReturn ?? true,
+        });
         room.phase = "trading";
         return null;
       }

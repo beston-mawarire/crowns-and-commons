@@ -33,7 +33,7 @@ no bots, one live session of 10, 15 or 20 minutes.
 | Poor country | 200 | none | 6 timber, 4 ore, 5 wool |
 
 Three players get one of each; four get a second raw-material country; five also get a second
-poor country. Everyone can see what everyone else holds, as they could across a room.
+poor country. Whether countries can see each other's holdings is up to the host (below).
 
 ## What you can do
 
@@ -47,6 +47,20 @@ poor country. Everyone can see what everyone else holds, as they could across a 
 - **Send:** give something away with no guarantee. Loans, aid and deals on trust are made
   this way, and nothing stops a promise being broken.
 - **Talk:** to everyone, or privately to one country.
+
+- **Lend a building** for 1 to 5 minutes.
+
+## The host's two switches
+
+- **Can you see what other countries hold?** On: everyone's holdings are visible, like tables
+  in a room. Off: you see only your own, the news says only that a deal was made, and nobody
+  can check what anyone claims. Everything is revealed when the market closes.
+- **Lent buildings.** Either they come back by themselves when the loan ends, or they only
+  come back if the borrower returns them.
+
+With both switched off, a poor country can win by bluffing: a poor country starts at 575, so
+talking its way into one workshop it never gives back (worth 900) more than doubles it, while
+the industrial country would need to add over 6,000 to keep pace.
 
 ## What happens during the game
 

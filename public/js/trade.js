@@ -9,7 +9,7 @@ const el = (id) => document.getElementById(id);
 const name = (id) => api.st().players.find((p) => p.id === id)?.name ?? "?";
 const color = (id) => api.hex(api.st().players.find((p) => p.id === id)?.color);
 const ORDER = ["gold", "timber", "ore", "wool", "amber", "planks", "cloth", "tools", "furniture", "machinery", "workshop", "sawmill", "forge", "loom"];
-const list = (inv) => ORDER.filter((k) => inv[k] > 0).map((k) => `${T().names[k]} ${inv[k]}`).join(" · ") || "nothing";
+const list = (inv) => !inv ? "hidden" : ORDER.filter((k) => inv[k] > 0).map((k) => `${T().names[k]} ${inv[k]}`).join(" · ") || "nothing";
 const words = (inv) => ORDER.filter((k) => inv[k] > 0).map((k) => `${inv[k]} ${k === "gold" ? "gold" : T().names[k].toLowerCase()}`).join(", ") || "nothing";
 
 /** My holdings including goods that have finished since the server last spoke. */
@@ -50,7 +50,8 @@ function build() {
 
   el("left").innerHTML = `<h3>Countries</h3><div id="t-countries"></div>
     <h3>How it works</h3>
-    <p class="small muted">Turn raw materials into goods and sell them to the market in batches of ${t.rules.batch}. You need a workshop, plus the right building for each product. Everything can be traded: materials, gold, goods, even buildings. A <b>safe swap</b> happens all at once. <b>Sending</b> is a gift: if someone promises to send something back, that is only a promise. Whoever grows their country the most wins.</p>`;
+    <p class="small muted">Turn raw materials into goods and sell them to the market in batches of ${t.rules.batch}. You need a workshop, plus the right building for each product. Everything can be traded: materials, gold, goods, even buildings. A <b>safe swap</b> happens all at once. <b>Sending</b> is a gift: if someone promises to send something back, that is only a promise. Whoever grows their country the most wins.</p>
+    <p class="small muted">${t.open ? "Everyone can see what every country holds." : "<b>Holdings are hidden.</b> You only know what others tell you, and they may not be telling the truth."} ${t.autoReturn ? "A lent building comes back by itself when the loan ends." : "<b>A lent building only comes back if the borrower returns it.</b>"}</p>`;
 
   el("tradeboard").innerHTML = `
     <div id="t-alert"></div>
@@ -71,6 +72,12 @@ function build() {
     <div class="field"><select id="t-send-to" aria-label="Send to">${others.map((p) => `<option value="${p.id}">to ${api.esc(p.name)}</option>`).join("")}</select></div>
     ${row("t-s1")}
     <button class="btn ghost wide" id="t-send">Send it</button>
+    <h3>Lend a building</h3>
+    <p class="small muted">${t.autoReturn ? "It comes back by itself when the time is up." : "Getting it back depends on the borrower keeping their word."}</p>
+    <div class="t-row"><select id="t-lend-min" aria-label="For how long">${[1, 2, 3, 5].map((m) => `<option value="${m}">${m} min</option>`).join("")}</select><select id="t-lend-b" aria-label="Building">${["workshop", "sawmill", "forge", "loom"].map((b) => `<option value="${b}">${t.names[b]}</option>`).join("")}</select></div>
+    <div class="field"><select id="t-lend-to" aria-label="Lend to">${others.map((p) => `<option value="${p.id}">to ${api.esc(p.name)}</option>`).join("")}</select></div>
+    <button class="btn ghost wide" id="t-lend">Lend it</button>
+    <div id="t-loans"></div>
     <h3>Talk</h3>
     <div id="t-chat" class="t-scroll"></div>
     <div class="t-say"><select id="t-chat-to" aria-label="Say to">${who("Everyone")}</select><input id="t-chat-text" maxlength="200" placeholder="Make a deal…" aria-label="Message" /></div>`;
@@ -81,6 +88,7 @@ function build() {
     return k && n > 0 ? { [k]: n } : {};
   };
   el("t-offer").onclick = () => api.send({ type: "t.offer", to: el("t-to").value || null, give: { ...read("t-g1"), ...read("t-g2") }, want: { ...read("t-w1"), ...read("t-w2") } });
+  el("t-lend").onclick = () => api.send({ type: "t.lend", to: el("t-lend-to").value, building: el("t-lend-b").value, minutes: Number(el("t-lend-min").value) });
   el("t-send").onclick = () => api.send({ type: "t.send", to: el("t-send-to").value, give: read("t-s1") });
   el("t-chat-text").onkeydown = (e) => {
     if (e.key !== "Enter" || !e.target.value.trim()) return;
@@ -100,6 +108,7 @@ function build() {
       if (d.t === "aid") api.send({ type: "t.aid", accept: d.accept === "1" });
       if (d.t === "accept") api.send({ type: "t.accept", id: Number(d.id) });
       if (d.t === "cancel") api.send({ type: "t.cancel", id: Number(d.id) });
+      if (d.t === "giveback") api.send({ type: "t.send", to: d.to, give: { [d.b]: 1 } });
     });
 }
 
@@ -133,6 +142,10 @@ function update() {
     })
     .join("");
   el("t-offers").innerHTML = offers || `<p class="small muted">No offers yet. Make one below, or talk first.</p>`;
+
+  el("t-loans").innerHTML = t.loans
+    .map((l) => `<p class="hint">${l.from === meId ? `You lent a ${l.building} to ${esc(name(l.to))}` : `You hold a ${l.building} lent by ${esc(name(l.from))}`}, due ${api.now() >= l.due ? "now" : "in " + Math.ceil((l.due - api.now()) / 60000) + " min"}.${l.to === meId && !t.autoReturn ? ` <button class="btn ghost small" data-t="giveback" data-to="${l.from}" data-b="${l.building}">Give it back</button>` : ""}</p>`)
+    .join("");
 
   // Chat (keep the view pinned to the newest message unless the reader has scrolled up)
   const chat = el("t-chat");
@@ -225,6 +238,8 @@ function drawResult() {
     <h3>What happened</h3>
     <p>${r.swaps} safe ${r.swaps === 1 ? "swap" : "swaps"} and ${r.gifts} ${r.gifts === 1 ? "thing" : "things"} sent on trust.
     ${rawLine(r, t)}</p>
+    ${r.loans.length ? `<p><b>Loans:</b> ${r.loans.map((l) => `${esc(name(l.from))} lent a ${l.building} to ${esc(name(l.to))}, and it ${l.status === "returned" ? "came back" : "<b>never came back</b>"}`).join("; ")}.</p>` : ""}
+    <p class="small muted">${t.open ? "Holdings were visible to everyone." : "Holdings were hidden during the game."} ${t.autoReturn ? "Lent buildings came back by themselves." : "Lent buildings only came back if the borrower returned them."}</p>
     <h3>Worth talking about</h3>
     <ol class="plain-list">
       <li>Was it fair? Who could make goods from the first second, and who could not?</li>
