@@ -62,10 +62,10 @@ function boot() {
   $("#create").onclick = async () => {
     $("#create").disabled = true;
     try {
-      const res = await fetch("/api/rooms", { method: "POST" });
+      const res = await fetch("/api/rooms?game=" + (S.homeGame === "trade" ? "trade" : "election"), { method: "POST" });
       const data = await res.json();
       if (!data.code) throw new Error(data.error || "No room");
-      location.href = "/?room=" + data.code + (S.homeGame === "trade" ? "&game=trade" : "");
+      location.href = "/?room=" + data.code;
     } catch {
       toast("Could not open a room. Please try again.");
       $("#create").disabled = false;
@@ -265,7 +265,10 @@ function render() {
   $("#game").hidden = false;
 
   // The trading mode has its own screen and takes over the three panels.
-  const trading = !!st.trade;
+  // Each room plays one game. Show its name at the top so nobody is in doubt.
+  $(".brand").innerHTML = st.mode === "trade" ? `Trade <span class="amp">and</span> Treachery` : `Crowns <span class="amp">&amp;</span> Commons`;
+  document.title = st.mode === "trade" ? "Trade and Treachery" : "Crowns & Commons";
+  const trading = st.mode === "trade" && st.phase !== "lobby" && !!st.trade;
   document.body.classList.toggle("trade-mode", trading);
   $("#tradeboard").hidden = !trading;
   if (trading) {
@@ -411,18 +414,8 @@ function renderCentre() {
   } else if (st.outcome?.kind === "national")
     banner = `<h2>${names([st.outcome.winner])} wins the election</h2><p>With ${st.seats.total[st.outcome.winner]} of the ${st.seats.all} seats in the council (${pct(st.results2.parties[st.outcome.winner].share)} of all votes).</p>`;
   if (st.phase === "planning" && st.issue && !st.you.eliminated) banner += `<p class="issue"><b>This year's big issue: ${esc(st.issue.name)}.</b> Laws about ${issueAreas()} count double.</p>`;
-  if (st.phase === "lobby") {
-    // A room opened from the Trade and Treachery tab starts on that game.
-    const wanted = new URLSearchParams(location.search).get("game");
-    if (wanted) {
-      history.replaceState(null, "", "/?room=" + st.code);
-      if (wanted === "trade" && st.mode !== "trade" && st.players.length === 1) send({ type: "settings", mode: "trade" });
-    }
-    const tab = (id, label) => `<button role="tab" data-game="${id}" aria-selected="${st.mode === id}">${label}</button>`;
-    banner = `<div class="gametabs" role="tablist" aria-label="Choose a game">${tab("election", "Crowns &amp; Commons")}${tab("trade", "Trade and Treachery")}</div><p class="small muted">Anyone here can switch the game until it starts.</p>` + banner;
-  }
+  if (st.phase === "lobby") banner += `<p class="small muted">This room plays ${st.mode === "trade" ? "Trade and Treachery" : "Crowns &amp; Commons"}. For the other game, <a href="/">open a new room</a> from the front page.</p>`;
   $("#banner").innerHTML = banner;
-  $("#banner").querySelectorAll("[data-game]").forEach((b) => (b.onclick = () => send({ type: "settings", mode: b.dataset.game })));
 
   // Map: one region per party. In the lobby it previews the split.
   const n = Math.min(5, Math.max(2, st.regions.length || st.players.length));

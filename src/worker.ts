@@ -32,7 +32,9 @@ export default {
       for (let attempt = 0; attempt < 5; attempt++) {
         const code = newCode();
         const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
-        const made = await stub.fetch(`https://room/create?code=${code}`, { method: "POST" });
+        // A room is for one game or the other, decided when it is opened.
+        const game = url.searchParams.get("game") === "trade" ? "trade" : "election";
+        const made = await stub.fetch(`https://room/create?code=${code}&game=${game}`, { method: "POST" });
         if (made.ok) return Response.json({ code });
       }
       return Response.json({ error: "Could not open a room. Please try again." }, { status: 503 });

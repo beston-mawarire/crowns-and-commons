@@ -6,10 +6,10 @@ let n = 0;
 const newId = () => `t${++n}`;
 
 function table(players = 3) {
-  const store: Store = { room: createRoom("TRADE", 777, 1000), timeline: null };
+  const store: Store = { room: createRoom("TRADE", 777, 1000, "trade"), timeline: null };
   const ps: Player[] = [];
   for (let i = 0; i < players; i++) ps.push(join(store.room, newId, `Country ${"ABCDE"[i]}`) as Player);
-  handle(store, ps[0].id, { type: "settings", mode: "trade", tradeSec: 600 }, 1000, newId);
+  handle(store, ps[0].id, { type: "settings", tradeSec: 600 }, 1000, newId);
   return { store, ps };
 }
 function started(players = 3) {
@@ -162,5 +162,24 @@ describe("Trade and Treachery: the host's two switches", () => {
     act(store, poor, { type: "t.send", to: rich.id, give: { forge: 1 } }, 9000);
     expect(t.loans[0].status).toBe("returned");
     expect(view(store.room, rich.id, 9001).trade!.loans).toHaveLength(0);
+  });
+});
+
+describe("the two games are separate", () => {
+  it("fixes a room's game when it is opened: nothing in the lobby can change it", () => {
+    const tradeRoom = table(3);
+    handle(tradeRoom.store, tradeRoom.ps[0].id, { type: "settings", mode: "election" }, 1500, newId);
+    handle(tradeRoom.store, tradeRoom.ps[1].id, { type: "settings", mode: "election" }, 1500, newId);
+    expect(view(tradeRoom.store.room, tradeRoom.ps[0].id, 1600).mode).toBe("trade");
+    handle(tradeRoom.store, tradeRoom.ps[0].id, { type: "start" }, 2000, newId);
+    expect(tradeRoom.store.room.phase).toBe("trading");
+    expect(view(tradeRoom.store.room, tradeRoom.ps[2].id, 2001).trade).not.toBeNull();
+
+    const store: Store = { room: createRoom("ELECT", 5, 1000), timeline: null };
+    const ps = [0, 1, 2].map((i) => join(store.room, newId, "P" + i) as Player);
+    handle(store, ps[0].id, { type: "settings", mode: "trade" }, 1500, newId);
+    handle(store, ps[0].id, { type: "start" }, 2000, newId);
+    expect(store.room.phase).toBe("planning");
+    expect(view(store.room, ps[0].id, 2001)).toMatchObject({ mode: "election", trade: null });
   });
 });

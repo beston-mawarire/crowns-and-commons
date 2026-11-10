@@ -60,7 +60,7 @@ export class GameRoom extends DurableObject<Env> {
     if (url.pathname === "/create" && request.method === "POST") {
       if (await this.load()) return new Response("exists", { status: 409 });
       const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-      this.store = { room: createRoom(url.searchParams.get("code") ?? "", seed, Date.now()), timeline: null };
+      this.store = { room: createRoom(url.searchParams.get("code") ?? "", seed, Date.now(), url.searchParams.get("game") === "trade" ? "trade" : "election"), timeline: null };
       await this.commit(this.store);
       return new Response("ok");
     }
