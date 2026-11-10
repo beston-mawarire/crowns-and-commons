@@ -83,7 +83,9 @@ doubles it, while the industrial country would need to add thousands to keep pac
 
 ## Payday
 
-Every minute, every share pays out 30% of its current price in gold. That is the only thing
+Every minute, every share pays out part of its current price in gold. The rate is set by the
+length of the game so that, over a whole game, a share pays back about its own price: 10% a
+minute in a 10-minute game, about 7% in 15 minutes, 5% in 20. That is the only thing
 that happens at payday: there is no tax, and nothing has to be fed.
 
 ## The market's orders
@@ -104,8 +106,8 @@ Farm & Loom, Coal & Power. Each has only **10 shares**. Shares start at 100 gold
 - Prices also drift every 30 seconds and jump when the news touches their industry.
 - Shares count towards worth at their current price.
 
-The 30% payout would compound out of control without the limit of ten shares per company;
-with it, shares are a prize to fight and bargain over rather than a place to park gold.
+The limit of ten shares per company keeps the payouts from snowballing: shares are a prize to
+fight and bargain over rather than a place to park gold.
 
 ## Borders
 
@@ -159,8 +161,8 @@ come from. When the market closes, the results show for every country:
 
 The numbers (prices, production times, building costs, event sizes) are a first guess and
 live at the top of `src/game/trade.ts`. In particular it is not yet known whether the poorer
-starts can realistically out-grow the industrial one, whether a 30% payout with ten shares a
-company makes the stock exchange too strong compared with making and selling goods.
+starts can realistically out-grow the industrial one, whether paying back a share's price once
+per game, with ten shares a company, makes the stock exchange too strong compared with making and selling goods.
 
 ## On screen
 

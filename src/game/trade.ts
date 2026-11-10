@@ -67,8 +67,12 @@ export const TRADE = {
   /** Share prices move this often; payday (share payouts) comes this often. */
   stockStepMs: 30_000,
   paydayMs: 60_000,
-  /** Every payday each share pays out this share of its current price. */
-  dividend: 0.3,
+  /**
+   * Over a whole game a share pays out about this many times its price, however long the game.
+   * Each payday it pays this divided by the number of paydays: 10% a minute in a 10-minute game,
+   * about 7% in 15 minutes, 5% in 20.
+   */
+  dividendTotal: 1,
   /** Each company has only so many shares. Buying one lifts the price, selling one lowers it. */
   shareSupply: 10,
   shareImpact: 0.05,
@@ -136,6 +140,8 @@ export interface TradeState {
   endsAt: number;
   prices: Record<string, number>;
   stocks: Record<string, { price: number; prev: number; hist: number[]; left: number }>;
+  /** What each share pays out every payday, as a share of its price; set by the length of the game. */
+  dividend: number;
   /** How many of each product the market wants at a time: usually five, now and then three or one. */
   batch: Record<string, number>;
   fairUntil: number;
@@ -278,6 +284,7 @@ export function startTrade(players: Who[], lengthSec: number, seed: number, now:
     prices: Object.fromEntries(GOODS.map((g) => [g, RECIPES[g].price])),
     stocks: Object.fromEntries(STOCKS.map((s) => [s, { price: 100, prev: 100, hist: [100], left: TRADE.shareSupply }])),
     batch: Object.fromEntries(GOODS.map((g) => [g, TRADE.batch])),
+    dividend: Math.round((TRADE.dividendTotal / Math.max(1, Math.floor(length / TRADE.paydayMs))) * 1000) / 1000,
     fairUntil: 0,
     nextStep: now + TRADE.stockStepMs,
     nextPay: now + TRADE.paydayMs,
@@ -337,7 +344,7 @@ function shock(t: TradeState, sector: string | null, factor: number) {
 /** Once a minute: every share pays out. */
 function payday(t: TradeState, at: number) {
   for (const [id, p] of Object.entries(t.players)) {
-    const paid = STOCKS.map((x) => [x, (p.inv[SHARE(x)] ?? 0) * Math.round(t.stocks[x].price * TRADE.dividend)] as const).filter(([, n]) => n > 0);
+    const paid = STOCKS.map((x) => [x, (p.inv[SHARE(x)] ?? 0) * Math.round(t.stocks[x].price * t.dividend)] as const).filter(([, n]) => n > 0);
     const total = paid.reduce((a, [, n]) => a + n, 0);
     p.inv.gold = (p.inv.gold ?? 0) + total;
     note(p, "dividends", total);
@@ -388,7 +395,7 @@ function world(t: TradeState, kind: string, now: number, name: (id: string) => s
     tell(`A great trade fair opens. For the next ${TRADE.fairMs / 1000} seconds the market pays ${TRADE.fairBonus * 100}% more for all goods.`);
   } else if (kind === "bonus") {
     for (const p of all) {
-      const extra = STOCKS.reduce((a, x) => a + (p.inv[SHARE(x)] ?? 0) * Math.round(t.stocks[x].price * TRADE.dividend), 0);
+      const extra = STOCKS.reduce((a, x) => a + (p.inv[SHARE(x)] ?? 0) * Math.round(t.stocks[x].price * t.dividend), 0);
       p.inv.gold = (p.inv.gold ?? 0) + extra;
     }
     tell("A record year for business! Every company pays an extra payout to its shareholders, right now.");
@@ -765,6 +772,7 @@ export function tradeView(t: TradeState, me: string, now: number) {
     stockNames: STOCK_NAMES,
     nextPay: t.nextPay,
     batch: t.batch,
+    dividend: t.dividend,
     fair: t.fairUntil > now,
     tariff: t.tariffUntil > now,
     recipes: RECIPES,

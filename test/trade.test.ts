@@ -229,13 +229,13 @@ describe("Trade and Treachery: the wider economy", () => {
     expect(t.players[rich.id].inv).toMatchObject({ food: 2, electricity: 0 });
   });
 
-  it("pays out 30% of each share's price every minute, and nothing else happens at payday", () => {
+  it("pays out part of each share's price every minute, and nothing else happens at payday", () => {
     const { store, t, rich, raw, poor } = started();
     expect(act(store, rich, { type: "t.stock", id: "wood", n: 2 }, 2100)).toBeNull();
     expect(t.players[rich.id].inv).toMatchObject({ gold: 600 - 100 - 105, share_wood: 2 }); // the second share cost more
     expect(t.stocks.wood).toMatchObject({ price: 110, left: 8 });
     runTo(store, 62_000);
-    expect(t.players[rich.id].inv.gold).toBe(395 + 2 * Math.round(t.stocks.wood.price * TRADE.dividend));
+    expect(t.players[rich.id].inv.gold).toBe(395 + 2 * Math.round(t.stocks.wood.price * t.dividend));
     expect(t.players[raw.id].inv.gold).toBe(200); // no shares, no payout, and nothing taken
     expect(t.players[poor.id].inv.gold).toBe(200);
     expect(t.players[rich.id].history).toHaveLength(2);
@@ -398,5 +398,21 @@ describe("Leaving and going back to the lobby", () => {
     handle(store, ps[1].id, { type: "newGame" }, 6000, newId);
     handle(store, ps[2].id, { type: "leave" }, 7000, newId);
     expect(store.room.players.map((p) => p.id)).toEqual([ps[0].id, ps[1].id]);
+  });
+});
+
+describe("Share payouts and game length", () => {
+  it("pays more each minute in a shorter game, so a share pays back about its price in every game", () => {
+    const rates: number[] = [];
+    for (const len of TRADE.lengths) {
+      const store: Store = { room: createRoom("LEN" + len, 7, 1000, "trade"), timeline: null };
+      const ps = [0, 1, 2].map((i) => join(store.room, newId, "C" + i) as Player);
+      handle(store, ps[0].id, { type: "settings", tradeSec: len }, 1500, newId);
+      handle(store, ps[0].id, { type: "start" }, 2000, newId);
+      const t = store.room.trade!;
+      rates.push(t.dividend);
+      expect(t.dividend * Math.floor((len * 1000) / TRADE.paydayMs)).toBeCloseTo(TRADE.dividendTotal, 1);
+    }
+    expect(rates).toEqual([0.1, 0.067, 0.05]);
   });
 });
