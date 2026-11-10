@@ -26,6 +26,7 @@
           <h1>Trade <span class="amp">and</span> Treachery</h1>
           <p class="lede">Three to five countries, one live market. Some start with industry, some with raw materials, some with almost nothing. Trade, bluff and bargain your way up.</p>
         </div>
+        <p id="resume" hidden><a class="btn ghost" id="resume-link" href="/"></a></p>
         <div class="home-actions">
           <button id="create" class="btn big">Open a new room</button>
           <form id="joinform">
@@ -56,6 +57,11 @@
         <div id="phase"></div>
         <div id="clock" aria-live="off"></div>
         <button id="invite" class="btn ghost small" title="Copy the invitation link"></button>
+        <span id="topnav">
+          <button id="tolobby" class="btn ghost small" hidden title="End this game and take everyone back to the lobby">Back to lobby</button>
+          <button id="leave" class="btn ghost small" title="Give up your place and go to the main menu">Leave game</button>
+          <a id="menu" class="btn ghost small" href="/" title="Go to the main menu. Your place is kept.">Main menu</a>
+        </span>
       </header>
       <div id="ticker"><span class="tick-label">News</span><div id="headline" aria-live="polite"></div></div>
       <main id="board">

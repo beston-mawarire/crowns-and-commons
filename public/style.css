@@ -307,3 +307,7 @@ details > summary { cursor: pointer; padding: 5px 0; }
 table.t-causes th, table.t-causes td { font-size: 12.5px; padding: 5px 6px; }
 .t-made { display: grid; grid-template-columns: 150px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px dotted var(--mid); }
 #right .t-card { margin-bottom: 12px; }
+#topnav { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+#topnav a.btn { text-decoration: none; display: inline-block; }
+#resume { margin: 0 0 16px; }
+#resume a { text-decoration: none; display: inline-block; }

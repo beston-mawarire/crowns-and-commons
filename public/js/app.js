@@ -95,6 +95,16 @@ function boot() {
       toast(link);
     }
   };
+  $("#leave").onclick = () => {
+    const playing = S.st && S.st.phase !== "lobby";
+    if (!confirm(playing ? "Leave this game? It carries on without you, and your place stays on the board." : "Leave this room?")) return;
+    send({ type: "leave" });
+    store.set("cc:token:" + S.code, "");
+    store.set("cc:last", "");
+    S.dead = true;
+    setTimeout(() => (location.href = "/"), 150);
+  };
+  $("#tolobby").onclick = () => confirm("End this game for everyone and go back to the lobby?") && send({ type: "newGame" });
   document.addEventListener("keydown", (e) => e.key === "Escape" && closeModal());
   setInterval(tick, 250);
 
@@ -158,6 +168,12 @@ function reconnect() {
 function showHome(message) {
   $("#game").hidden = true;
   $("#home").hidden = false;
+  const last = store.get("cc:last");
+  if (last && /^[A-Z0-9]{5}$/.test(last)) {
+    $("#resume").hidden = false;
+    $("#resume-link").href = "/?room=" + last;
+    $("#resume-link").textContent = `Go back to your game in room ${last}`;
+  }
   if (message) toast(message, 6000);
 }
 
@@ -181,6 +197,7 @@ function connect() {
       sawVersion(msg.version);
       S.info = msg;
       store.set("cc:token:" + S.code, msg.you.token);
+      store.set("cc:last", S.code);
     } else if (msg.type === "state") {
       S.st = msg;
       S.offset = msg.now - Date.now();
@@ -188,6 +205,7 @@ function connect() {
     } else if (msg.type === "error") {
       if (msg.fatal) {
         S.dead = true;
+        if (store.get("cc:last") === S.code) store.set("cc:last", "");
         ws.close();
         history.replaceState(null, "", "/");
         showHome(msg.message);
@@ -277,6 +295,7 @@ function render() {
     closeModal();
     $("#phase").textContent = st.trade.over ? "Trade and Treachery · the market has closed" : "Trade and Treachery · the market is open";
     $("#invite").textContent = `Room ${st.code} · copy link`;
+  $("#tolobby").hidden = !(st.you.mayHost && st.phase !== "lobby");
     const latest = st.trade.news.at(-1);
     if (latest && latest.id !== S.tradeNews) {
       S.tradeNews = latest.id;
@@ -341,6 +360,7 @@ function renderTop() {
   }[st.phase];
   $("#phase").textContent = label;
   $("#invite").textContent = `Room ${st.code} · copy link`;
+  $("#tolobby").hidden = !(st.you.mayHost && st.phase !== "lobby");
 }
 
 function statusOf(p) {

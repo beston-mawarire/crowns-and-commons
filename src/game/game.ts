@@ -305,9 +305,17 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
       else if (room.outcome?.kind === "advance") startNational(store, now);
       return null;
     }
+    case "leave": {
+      // In the lobby the seat is given up. Once a game is running the party or country stays on the
+      // board (others may be dealing with it), and the room simply passes to someone who is still here.
+      if (room.phase === "lobby") room.players = room.players.filter((p) => p !== me);
+      if (room.hostId === me.id) room.hostId = room.players.find((p) => !p.bot && p !== me && p.connected)?.id ?? room.players.find((p) => !p.bot && p !== me)?.id ?? "";
+      return null;
+    }
     case "newGame": {
-      if (room.phase !== "final" && room.phase !== "results") return null;
-      if (!mayHost(room, playerId)) return "Only the host can start a new match.";
+      // The host may take everyone back to the lobby at any time, ending the game in progress.
+      if (room.phase === "lobby") return null;
+      if (!mayHost(room, playerId)) return "Only the host can take everyone back to the lobby.";
       backToLobby(store);
       return null;
     }

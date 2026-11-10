@@ -399,3 +399,24 @@ describe("Trade and Treachery: the wider economy", () => {
     expect(wealth({ gold: 10, share_wood: 2 }, t.stocks)).toBe(510);
   });
 });
+
+describe("Leaving and going back to the lobby", () => {
+  it("lets the host end a running game for everyone, and nobody else", () => {
+    const { store, ps } = started();
+    expect(handle(store, ps[1].id, { type: "newGame" }, 5000, newId)).toMatch(/Only the host/);
+    expect(handle(store, ps[0].id, { type: "newGame" }, 5000, newId)).toBeNull();
+    expect(store.room.phase).toBe("lobby");
+    expect(store.room.trade).toBeNull();
+    expect(store.room.players).toHaveLength(3);
+  });
+
+  it("frees the seat when someone leaves the lobby, and keeps the country when they leave a game", () => {
+    const { store, ps } = started();
+    handle(store, ps[0].id, { type: "leave" }, 5000, newId);
+    expect(store.room.players).toHaveLength(3); // the country stays on the board
+    expect(store.room.hostId).toBe(ps[1].id); // and the room passes on
+    handle(store, ps[1].id, { type: "newGame" }, 6000, newId);
+    handle(store, ps[2].id, { type: "leave" }, 7000, newId);
+    expect(store.room.players.map((p) => p.id)).toEqual([ps[0].id, ps[1].id]);
+  });
+});
