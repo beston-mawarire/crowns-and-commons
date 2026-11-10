@@ -6,21 +6,38 @@
 // market in batches of five, and everything else is up to the players: what to trade, at
 // what price, and whether to keep their word. It is played live against a single clock.
 //
+// Around that core sit a few systems that give players more to argue about: a stock
+// exchange, a payday every minute (income, dividends, feeding the people, tax), borders that
+// can be guarded or not, and events that reward or punish those choices.
+//
 // Like game.ts, this file is plain functions over a plain object.
 
-import { mulberry32, shuffle } from "./sim";
+import { mulberry32, shuffle, type Rng } from "./sim";
 
 // ---------------------------------------------------------------- the economy
 
-export const RAWS = ["timber", "ore", "wool"] as const;
-export const BUILDINGS = ["workshop", "sawmill", "forge", "loom"] as const;
-export const GOODS = ["planks", "cloth", "tools", "furniture", "machinery"] as const;
-const ITEMS: string[] = ["gold", ...RAWS, "amber", ...GOODS, ...BUILDINGS];
+export const RAWS = ["timber", "ore", "wool", "grain", "coal"] as const;
+export const BUILDINGS = ["workshop", "sawmill", "forge", "loom", "mill", "power", "garrison"] as const;
+/** Buildings that turn one thing into another (a workshop is needed as well). */
+const PROCESSORS = ["sawmill", "forge", "loom", "mill", "power"];
+export const GOODS = ["planks", "cloth", "tools", "food", "electricity", "furniture", "machinery"] as const;
+export const STOCKS = ["wood", "metal", "farm", "energy"] as const;
+const SHARE = (id: string) => "share_" + id;
+const ITEMS: string[] = ["gold", ...RAWS, "amber", ...GOODS, ...BUILDINGS, ...STOCKS.map(SHARE)];
 
 export const NAMES: Record<string, string> = {
-  gold: "Gold", timber: "Timber", ore: "Ore", wool: "Wool", amber: "Amber",
-  planks: "Planks", cloth: "Cloth", tools: "Tools", furniture: "Furniture", machinery: "Machinery",
-  workshop: "Workshop", sawmill: "Sawmill", forge: "Forge", loom: "Loom",
+  gold: "Gold", timber: "Timber", ore: "Ore", wool: "Wool", grain: "Grain", coal: "Coal", amber: "Amber",
+  planks: "Planks", cloth: "Cloth", tools: "Tools", food: "Food", electricity: "Electricity", furniture: "Furniture", machinery: "Machinery",
+  workshop: "Workshop", sawmill: "Sawmill", forge: "Forge", loom: "Loom", mill: "Mill", power: "Power plant", garrison: "Border guard",
+  share_wood: "Timber Co shares", share_metal: "Ironworks shares", share_farm: "Farm & Loom shares", share_energy: "Coal & Power shares",
+};
+export const STOCK_NAMES: Record<string, string> = { wood: "Timber Co", metal: "Ironworks", farm: "Farm & Loom", energy: "Coal & Power" };
+/** Which company's shares move when something happens to a raw material or a product. */
+const SECTOR: Record<string, string> = {
+  timber: "wood", planks: "wood", furniture: "wood",
+  ore: "metal", tools: "metal", machinery: "metal",
+  wool: "farm", cloth: "farm", grain: "farm", food: "farm",
+  coal: "energy", electricity: "energy",
 };
 
 /** What each good is made from, which buildings it needs besides a workshop, and how long one takes. */
@@ -28,8 +45,10 @@ export const RECIPES: Record<string, { uses: Record<string, number>; needs: stri
   planks: { uses: { timber: 1 }, needs: ["sawmill"], price: 150, seconds: 6 },
   cloth: { uses: { wool: 1 }, needs: ["loom"], price: 200, seconds: 7 },
   tools: { uses: { ore: 1 }, needs: ["forge"], price: 200, seconds: 7 },
+  food: { uses: { grain: 1 }, needs: ["mill"], price: 120, seconds: 5 },
+  electricity: { uses: { coal: 1 }, needs: ["power"], price: 130, seconds: 5 },
   furniture: { uses: { timber: 1, wool: 1 }, needs: ["sawmill", "loom"], price: 300, seconds: 9 },
-  machinery: { uses: { ore: 1, timber: 1 }, needs: ["forge", "sawmill"], price: 500, seconds: 12 },
+  machinery: { uses: { ore: 1, timber: 1, electricity: 1 }, needs: ["forge", "sawmill"], price: 700, seconds: 12 },
 };
 
 export const TRADE = {
@@ -39,23 +58,28 @@ export const TRADE = {
   batch: 5,
   /** The market will always buy raw materials, but for very little. */
   rawFloor: 25,
-  buildingPrice: { workshop: 900, sawmill: 600, forge: 600, loom: 600 } as Record<string, number>,
+  buildingPrice: { workshop: 900, sawmill: 600, forge: 600, loom: 600, mill: 500, power: 600, garrison: 300 } as Record<string, number>,
   amberMultiplier: 4,
   strikeMs: 45_000,
   tariffCut: 0.3,
   aidShare: 0.3,
   maxOffers: 5,
+  /** Share prices move this often; payday comes this often. */
+  stockStepMs: 30_000,
+  paydayMs: 60_000,
+  baseIncome: 40,
+  dividend: 0.03,
+  /** Every ten people eat one food each payday; a missing meal is imported at this price. */
+  importFood: 25,
+  /** Tax on gold above the allowance, unless you have been generous since the last payday. */
+  taxRate: 0.05,
+  taxAllowance: 200,
+  generousValue: 100,
+  startPopulation: 10,
+  migrants: 10,
 };
 
 type Inv = Record<string, number>;
-
-/** The three kinds of start. A is the industrial country; B is rich in raw materials; C has little of anything. */
-const STARTS: Record<string, Inv> = {
-  A: { gold: 600, workshop: 2, sawmill: 1, forge: 1, loom: 1, timber: 2, ore: 1, wool: 1 },
-  B: { gold: 200, timber: 16, ore: 14, wool: 14, amber: 2 },
-  C: { gold: 200, timber: 6, ore: 4, wool: 5 },
-};
-const TIERS: Record<number, string[]> = { 3: ["A", "B", "C"], 4: ["A", "B", "B", "C"], 5: ["A", "B", "B", "C", "C"] };
 
 export interface Job {
   id: number;
@@ -74,6 +98,12 @@ export interface TradePlayer {
   knowsAmber: boolean;
   strikeUntil: number;
   aid: "none" | "offered" | "accepted" | "declined";
+  population: number;
+  /** Value given away since the last payday, and whether a building was lent: both earn a tax holiday. */
+  given: number;
+  lent: boolean;
+  /** Worth at each payday, for the growth chart. */
+  history: number[];
 }
 
 export interface Offer {
@@ -109,6 +139,9 @@ export interface TradeState {
   startedAt: number;
   endsAt: number;
   prices: Record<string, number>;
+  stocks: Record<string, { price: number; prev: number }>;
+  nextStep: number;
+  nextPay: number;
   players: Record<string, TradePlayer>;
   offers: Offer[];
   chat: { id: number; from: string; to: string | null; text: string; t: number }[];
@@ -159,21 +192,56 @@ export const describe = (inv: Inv) =>
     .map(([k, n]) => (k === "gold" ? `${n} gold` : `${n} ${NAMES[k].toLowerCase()}`))
     .join(", ") || "nothing";
 
-/** What a country is worth: gold, goods at their usual price, raw materials at the market floor, buildings at cost. */
-export function wealth(inv: Inv): number {
+/**
+ * What a country is worth: gold, goods at their usual price, raw materials at the market
+ * floor, buildings at cost, and shares at today's price (or 100 each if no prices are given).
+ */
+export function wealth(inv: Inv, stocks?: TradeState["stocks"]): number {
   let total = inv.gold ?? 0;
   for (const g of GOODS) total += (inv[g] ?? 0) * RECIPES[g].price;
   for (const r of [...RAWS, "amber"]) total += (inv[r] ?? 0) * TRADE.rawFloor;
   for (const b of BUILDINGS) total += (inv[b] ?? 0) * TRADE.buildingPrice[b];
-  return total;
+  for (const s of STOCKS) total += (inv[SHARE(s)] ?? 0) * (stocks?.[s].price ?? 100);
+  return Math.round(total);
 }
 
 function say(t: TradeState, now: number, text: string, to: string | null = null) {
   t.news.push({ id: t.nextId++, t: now, text, to });
-  if (t.news.length > 80) t.news.shift();
+  if (t.news.length > 100) t.news.shift();
 }
 
 // ---------------------------------------------------------------- start
+
+/**
+ * Deal the starts. Three kinds, with the details different every game:
+ *  A  the industrial country: two workshops and three of the five processing buildings, money, almost no raw materials
+ *  B  rich in three of the five raw materials, no workshop
+ *  C  a little of two raw materials and not much else
+ * Nobody can do everything alone, and a poorer country may hold the one building the rich one lacks.
+ */
+function dealStart(tier: string, rng: Rng): Inv {
+  const raws = shuffle([...RAWS], rng);
+  const procs = shuffle(PROCESSORS, rng);
+  if (tier === "A") {
+    const inv: Inv = { gold: 600, workshop: 2 };
+    for (const b of procs.slice(0, 3)) inv[b] = 1;
+    for (const r of raws.slice(0, 3)) inv[r] = 1 + Math.floor(rng() * 2);
+    return inv;
+  }
+  if (tier === "B") {
+    const inv: Inv = { gold: 200, amber: 2 };
+    for (const r of raws.slice(0, 3)) inv[r] = 12 + Math.floor(rng() * 5);
+    inv[raws[3]] = 2;
+    if (rng() < 0.5) inv[procs[0]] = 1;
+    return inv;
+  }
+  const inv: Inv = { gold: 200 };
+  for (const r of raws.slice(0, 2)) inv[r] = 4 + Math.floor(rng() * 3);
+  inv[raws[2]] = 2;
+  if (rng() < 0.6) inv[procs[0]] = 1;
+  return inv;
+}
+const TIERS: Record<number, string[]> = { 3: ["A", "B", "C"], 4: ["A", "B", "B", "C"], 5: ["A", "B", "B", "C", "C"] };
 
 export function startTrade(players: Who[], lengthSec: number, seed: number, now: number, opts: { open: boolean; autoReturn: boolean } = { open: true, autoReturn: true }): TradeState {
   const rng = mulberry32(seed);
@@ -183,14 +251,20 @@ export function startTrade(players: Who[], lengthSec: number, seed: number, now:
     startedAt: now,
     endsAt: now + length,
     prices: Object.fromEntries(GOODS.map((g) => [g, RECIPES[g].price])),
+    stocks: Object.fromEntries(STOCKS.map((s) => [s, { price: 100, prev: 100 }])),
+    nextStep: now + TRADE.stockStepMs,
+    nextPay: now + TRADE.paydayMs,
     players: {},
     offers: [],
     chat: [],
     news: [],
     // The "leader's interventions" of the original game, on a timetable with a little give in it.
-    events: [
-      ["secret", 0.12], ["deposit", 0.3], ["crash", 0.42], ["strike", 0.52], ["aid", 0.62], ["tariff", 0.72], ["boom", 0.85],
-    ].map(([kind, f]) => ({ kind: kind as string, at: now + Math.round(length * ((f as number) + (rng() - 0.5) * 0.06)), done: false })),
+    events: (
+      [
+        ["secret", 0.1], ["deposit", 0.2], ["migrationWarning", 0.27], ["migration", 0.34], ["crash", 0.42], ["strike", 0.5],
+        ["raidWarning", 0.55], ["raid", 0.63], ["aid", 0.69], ["tariff", 0.76], ["boom", 0.86],
+      ] as [string, number][]
+    ).map(([kind, f]) => ({ kind, at: now + Math.round(length * (f + (rng() - 0.5) * 0.03)), done: false })),
     tariffUntil: 0,
     deals: [],
     nextId: 1,
@@ -201,8 +275,8 @@ export function startTrade(players: Who[], lengthSec: number, seed: number, now:
     loans: [],
   };
   players.forEach((p, i) => {
-    const inv = { ...STARTS[tiers[i]] };
-    t.players[p.id] = { tier: tiers[i], inv, start: { ...inv }, jobs: [], knowsAmber: false, strikeUntil: 0, aid: "none" };
+    const inv = dealStart(tiers[i], rng);
+    t.players[p.id] = { tier: tiers[i], inv, start: { ...inv }, jobs: [], knowsAmber: false, strikeUntil: 0, aid: "none", population: TRADE.startPopulation, given: 0, lent: false, history: [wealth(inv)] };
   });
   say(t, now, "The market is open. Make goods, sell them in batches of five, and trade with each other however you like.");
   return t;
@@ -225,12 +299,57 @@ function settle(t: TradeState, now: number) {
   }
 }
 
-/** Bring the game up to date: production, timed events, and the final whistle. */
+function shock(t: TradeState, sector: string | null, factor: number) {
+  for (const s of STOCKS) if (!sector || s === sector) t.stocks[s].price = Math.max(10, Math.round(t.stocks[s].price * factor));
+}
+
+/** Once a minute: income and dividends in, food and tax out. */
+function payday(t: TradeState, at: number) {
+  for (const [id, p] of Object.entries(t.players)) {
+    const dividends = Math.round(STOCKS.reduce((a, s) => a + (p.inv[SHARE(s)] ?? 0) * t.stocks[s].price, 0) * TRADE.dividend);
+    const meals = Math.ceil(p.population / 10);
+    const eaten = Math.min(meals, p.inv.food ?? 0);
+    p.inv.food = (p.inv.food ?? 0) - eaten;
+    const imports = (meals - eaten) * TRADE.importFood;
+    const generous = p.lent || p.given >= TRADE.generousValue || t.loans.some((l) => l.from === id && l.status === "out");
+    const before = (p.inv.gold ?? 0) + TRADE.baseIncome + dividends - imports;
+    const tax = generous ? 0 : Math.round(Math.max(0, before - TRADE.taxAllowance) * TRADE.taxRate);
+    p.inv.gold = Math.max(0, before - tax);
+    p.given = 0;
+    p.lent = false;
+    p.history.push(wealth(p.inv, t.stocks));
+    say(
+      t,
+      at,
+      `Payday: +${TRADE.baseIncome} income${dividends ? `, +${dividends} from your shares` : ""}. ` +
+        (imports ? `Your people needed ${meals} food and you had ${eaten}: −${imports} to import the rest. ` : `Your people were fed from your own stores. `) +
+        (generous ? "No tax this time, thanks to your generosity." : tax ? `Tax: −${tax}.` : "No tax due."),
+      id,
+    );
+  }
+}
+
+/** Bring the game up to date: production, share prices, paydays, timed events, and the final whistle. */
 export function tradeTick(t: TradeState, who: Who[], now: number) {
   if (t.over) return;
   settle(t, now);
   const name = (id: string) => who.find((w) => w.id === id)?.name ?? "A country";
   const ids = Object.keys(t.players);
+
+  while (t.nextStep <= now && t.nextStep < t.endsAt) {
+    const rng = mulberry32(t.seed + t.nextStep);
+    for (const s of STOCKS) {
+      const st = t.stocks[s];
+      st.prev = st.price;
+      st.price = Math.max(10, Math.round(st.price * (1.01 + (rng() - 0.5) * 0.14)));
+    }
+    t.nextStep += TRADE.stockStepMs;
+  }
+  while (t.nextPay <= now && t.nextPay < t.endsAt) {
+    payday(t, t.nextPay);
+    t.nextPay += TRADE.paydayMs;
+  }
+
   for (const ev of t.events) {
     if (ev.done || now < ev.at || now >= t.endsAt) continue;
     ev.done = true;
@@ -238,6 +357,7 @@ export function tradeTick(t: TradeState, who: Who[], now: number) {
     const pick = <T>(arr: T[]) => arr[Math.floor(rng() * arr.length)];
     const rich = ids.filter((id) => t.players[id].tier === "A");
     const others = ids.filter((id) => t.players[id].tier !== "A");
+    const unguarded = ids.filter((id) => !(t.players[id].inv.garrison ?? 0));
     if (ev.kind === "secret") {
       for (const id of rich) {
         t.players[id].knowsAmber = true;
@@ -247,33 +367,53 @@ export function tradeTick(t: TradeState, who: Who[], now: number) {
       const id = pick(others.length ? others : ids);
       const raw = pick([...RAWS]);
       t.players[id].inv[raw] = (t.players[id].inv[raw] ?? 0) + 10;
-      say(t, now, `Discovery! A large new deposit of ${raw} has been found in ${name(id)}.`);
+      shock(t, SECTOR[raw], 1.15);
+      say(t, now, `Discovery! A large new deposit of ${raw} has been found in ${name(id)}. ${STOCK_NAMES[SECTOR[raw]]} shares jump.`);
     } else if (ev.kind === "crash") {
       const good = GOODS.reduce((a, b) => (t.prices[a] >= t.prices[b] ? a : b));
       t.prices[good] = Math.round(t.prices[good] / 2);
-      say(t, now, `Prices fall: the market is flooded with ${good}, which now sells for ${t.prices[good]} each.`);
+      shock(t, SECTOR[good], 0.65);
+      say(t, now, `Prices fall: the market is flooded with ${good}, which now sells for ${t.prices[good]} each. ${STOCK_NAMES[SECTOR[good]]} shares tumble.`);
     } else if (ev.kind === "boom") {
       const good = GOODS.reduce((a, b) => (t.prices[a] <= t.prices[b] ? a : b));
       t.prices[good] = Math.round(t.prices[good] * 1.6);
-      say(t, now, `Prices rise: ${good} is suddenly in fashion and now sells for ${t.prices[good]} each.`);
+      shock(t, SECTOR[good], 1.4);
+      say(t, now, `Prices rise: ${good} is suddenly in demand and now sells for ${t.prices[good]} each. ${STOCK_NAMES[SECTOR[good]]} shares soar.`);
     } else if (ev.kind === "strike") {
       const id = pick(ids.filter((x) => (t.players[x].inv.workshop ?? 0) > 0));
       if (id) {
         const p = t.players[id];
         p.strikeUntil = now + TRADE.strikeMs;
         for (const job of p.jobs) job.startedAt += TRADE.strikeMs;
+        shock(t, null, 0.95);
         say(t, now, `Strike! Workers in ${name(id)} have walked out. Its workshops stand still for ${TRADE.strikeMs / 1000} seconds.`);
       }
+    } else if (ev.kind === "migrationWarning") {
+      say(t, now, `Reports from the borders: large numbers of people are on the move. Countries without a border guard (${TRADE.buildingPrice.garrison} gold) should expect new arrivals, and new mouths to feed.`);
+    } else if (ev.kind === "migration") {
+      for (const id of unguarded) t.players[id].population += TRADE.migrants;
+      say(t, now, unguarded.length ? `Migration: ${unguarded.map(name).join(", ")} ${unguarded.length === 1 ? "has" : "have"} no border guard and each take in ${TRADE.migrants} new people. They need feeding every payday.` : "A wave of migrants finds every border guarded and moves on.");
+    } else if (ev.kind === "raidWarning") {
+      say(t, now, "Scouts report raiders gathering beyond the frontier. They will strike a country that has no border guard.");
+    } else if (ev.kind === "raid") {
+      const id = pick(unguarded);
+      if (id) {
+        const inv = t.players[id].inv;
+        inv.gold = Math.floor((inv.gold ?? 0) * 0.8);
+        for (const r of RAWS) inv[r] = Math.floor((inv[r] ?? 0) * 0.75);
+        shock(t, null, 0.92);
+        say(t, now, `Invasion! Raiders cross into ${name(id)}, which had no border guard, and carry off a fifth of its gold and a quarter of its raw materials.`);
+      } else say(t, now, "The raiders find every border guarded and turn back.");
     } else if (ev.kind === "aid") {
-      const poor = ids.filter((x) => !(t.players[x].inv.workshop ?? 0)).sort((a, b) => wealth(t.players[a].inv) - wealth(t.players[b].inv))[0];
+      const poor = ids.filter((x) => !(t.players[x].inv.workshop ?? 0)).sort((a, b) => wealth(t.players[a].inv, t.stocks) - wealth(t.players[b].inv, t.stocks))[0];
       if (poor) {
         t.players[poor].aid = "offered";
-        say(t, now, `The market's bankers offer you aid: a workshop and a sawmill, free. The condition: they keep ${TRADE.aidShare * 100}% of everything you sell to the market from then on.`, poor);
+        say(t, now, `The market's bankers offer you aid: a workshop and a mill, free. The condition: they keep ${TRADE.aidShare * 100}% of everything you sell to the market from then on.`, poor);
         say(t, now, `The market's bankers have offered aid to ${name(poor)}, with conditions.`);
       }
     } else if (ev.kind === "tariff") {
       t.tariffUntil = now + (t.endsAt - t.startedAt) * 0.12;
-      say(t, now, `New tariff: for a while, the market pays ${TRADE.tariffCut * 100}% less for goods from countries that started without industry. Raw materials are not affected.`);
+      say(t, now, `New tariff: for a while, the market pays ${TRADE.tariffCut * 100}% less for goods from countries that started without a workshop. Raw materials are not affected.`);
     }
   }
   // Loans falling due.
@@ -296,15 +436,16 @@ export function tradeTick(t: TradeState, who: Who[], now: number) {
   }
   if (now >= t.endsAt) {
     for (const loan of t.loans) if (loan.status === "out") loan.status = "kept";
+    for (const p of Object.values(t.players)) p.history.push(wealth(p.inv, t.stocks));
     t.over = true;
     t.offers = [];
     say(t, t.endsAt, "The market has closed.");
   }
 }
 
-/** When this game next needs the clock: the next event, the next finished item is not needed (it is worked out on demand). */
+/** When this game next needs the clock. (Finished production is worked out on demand.) */
 export function tradeAlarm(t: TradeState): number {
-  return Math.min(t.endsAt, ...t.events.filter((e) => !e.done).map((e) => e.at), ...t.loans.filter((l) => !l.called && l.status === "out").map((l) => l.due));
+  return Math.min(t.endsAt, t.nextStep, t.nextPay, ...t.events.filter((e) => !e.done).map((e) => e.at), ...t.loans.filter((l) => !l.called && l.status === "out").map((l) => l.due));
 }
 
 // ---------------------------------------------------------------- what players can do
@@ -322,11 +463,11 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
       const count = Math.floor(Number(msg.count));
       if (!recipe || !(count >= 1 && count <= 50)) return "Choose something to make.";
       if (!(p.inv.workshop ?? 0)) return "You need a workshop to make anything.";
-      for (const b of recipe.needs) if (!(p.inv[b] ?? 0)) return `You need a ${b} to make ${msg.good}.`;
+      for (const b of recipe.needs) if (!(p.inv[b] ?? 0)) return `You need a ${NAMES[b].toLowerCase()} to make ${msg.good}.`;
       if (p.strikeUntil > now) return "Your workers are on strike.";
       if (p.jobs.length >= p.inv.workshop) return "All your workshops are busy.";
       const uses = Object.fromEntries(Object.entries(recipe.uses).map(([k, n]) => [k, n * count]));
-      if (!has(p.inv, uses)) return "You do not have enough raw materials for that.";
+      if (!has(p.inv, uses)) return "You do not have enough materials for that.";
       move(p.inv, {}, uses);
       p.jobs.push({ id: t.nextId++, good: msg.good, count, made: 0, startedAt: now, per: recipe.seconds * 1000 });
       return null;
@@ -361,10 +502,26 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
     case "t.buy": {
       const price = TRADE.buildingPrice[msg.building];
       if (!price) return "Choose a building.";
-      if ((p.inv.gold ?? 0) < price) return `A ${msg.building} costs ${price} gold.`;
+      if ((p.inv.gold ?? 0) < price) return `A ${NAMES[msg.building].toLowerCase()} costs ${price} gold.`;
       p.inv.gold -= price;
       p.inv[msg.building] = (p.inv[msg.building] ?? 0) + 1;
-      if (t.open) say(t, now, `${name(me)} builds a ${msg.building}.`);
+      if (t.open) say(t, now, `${name(me)} builds a ${NAMES[msg.building].toLowerCase()}.`);
+      return null;
+    }
+    case "t.stock": {
+      const n = Math.floor(Number(msg.n));
+      const st = t.stocks[msg.id];
+      if (!st || !n || Math.abs(n) > 1000) return "Choose a company and how many shares.";
+      const key = SHARE(msg.id);
+      if (n > 0) {
+        if ((p.inv.gold ?? 0) < n * st.price) return `You cannot afford ${n} ${n === 1 ? "share" : "shares"} at ${st.price} each.`;
+        p.inv.gold -= n * st.price;
+        p.inv[key] = (p.inv[key] ?? 0) + n;
+      } else {
+        if ((p.inv[key] ?? 0) < -n) return "You do not own that many shares.";
+        p.inv[key] += n;
+        p.inv.gold = (p.inv.gold ?? 0) - n * st.price;
+      }
       return null;
     }
     case "t.aid": {
@@ -372,7 +529,7 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
       p.aid = msg.accept ? "accepted" : "declined";
       if (msg.accept) {
         p.inv.workshop = (p.inv.workshop ?? 0) + 1;
-        p.inv.sawmill = (p.inv.sawmill ?? 0) + 1;
+        p.inv.mill = (p.inv.mill ?? 0) + 1;
       }
       say(t, now, `${name(me)} ${msg.accept ? "accepts the aid, and its conditions" : "turns the aid down"}.`);
       return null;
@@ -413,6 +570,7 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
       if (!give || !t.players[msg.to] || msg.to === me) return "Choose what to send and to whom.";
       if (!has(p.inv, give)) return "You do not have that to send.";
       move(p.inv, t.players[msg.to].inv, give);
+      p.given += wealth(give, t.stocks);
       t.deals.push({ t: now, kind: "gift", from: me, to: msg.to, give, want: {} });
       // Sending a borrowed building back to its owner settles the loan.
       for (const [k, n] of Object.entries(give)) {
@@ -428,10 +586,12 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
       if (!(BUILDINGS as readonly string[]).includes(msg.building) || !t.players[msg.to] || msg.to === me || !(minutes >= 1 && minutes <= 10)) return "Choose a building, a country and how long to lend it for.";
       if (!(p.inv[msg.building] ?? 0)) return "You do not have that building to lend.";
       move(p.inv, t.players[msg.to].inv, { [msg.building]: 1 });
+      p.lent = true;
       t.loans.push({ id: t.nextId++, from: me, to: msg.to, building: msg.building, due: now + minutes * 60_000, status: "out", called: false });
       const terms = t.autoReturn ? "It will come back by itself." : "Giving it back is up to the borrower.";
-      say(t, now, `You lent a ${msg.building} to ${name(msg.to)} for ${minutes} ${minutes === 1 ? "minute" : "minutes"}. ${terms}`, me);
-      say(t, now, `${name(me)} has lent you a ${msg.building} for ${minutes} ${minutes === 1 ? "minute" : "minutes"}. ${terms}`, msg.to);
+      const what = NAMES[msg.building].toLowerCase();
+      say(t, now, `You lent a ${what} to ${name(msg.to)} for ${minutes} ${minutes === 1 ? "minute" : "minutes"}. ${terms}`, me);
+      say(t, now, `${name(me)} has lent you a ${what} for ${minutes} ${minutes === 1 ? "minute" : "minutes"}. ${terms}`, msg.to);
       return null;
     }
     case "t.chat": {
@@ -454,7 +614,11 @@ export function tradeView(t: TradeState, me: string, now: number) {
   const mine = <T extends { from: string; to: string | null }>(x: T) => x.to === null || x.from === me || x.to === me;
   let result = null;
   if (t.over) {
-    const rows = Object.entries(t.players).map(([id, q]) => ({ id, tier: q.tier, start: q.start, startWealth: wealth(q.start), wealth: wealth(q.inv), growth: wealth(q.inv) / wealth(q.start) }));
+    const rows = Object.entries(t.players).map(([id, q]) => {
+      const startWealth = wealth(q.start);
+      const end = wealth(q.inv, t.stocks);
+      return { id, tier: q.tier, start: q.start, startWealth, wealth: end, growth: end / startWealth, population: q.population, history: q.history };
+    });
     // How the going rate for raw materials moved: gold paid per unit in straight raw-for-gold swaps.
     const rate = (from: number, to: number) => {
       let gold = 0;
@@ -489,6 +653,9 @@ export function tradeView(t: TradeState, me: string, now: number) {
     endsAt: t.endsAt,
     over: t.over,
     prices: t.prices,
+    stocks: t.stocks,
+    stockNames: STOCK_NAMES,
+    nextPay: t.nextPay,
     tariff: t.tariffUntil > now,
     recipes: RECIPES,
     names: NAMES,
@@ -499,7 +666,18 @@ export function tradeView(t: TradeState, me: string, now: number) {
     // until the market closes.
     holdings: Object.fromEntries(Object.entries(t.players).filter(([id]) => t.open || t.over || id === me).map(([id, q]) => [id, q.inv])),
     loans: t.loans.filter((l) => l.status === "out" && (l.from === me || l.to === me)),
-    me: p ? { jobs: p.jobs, strikeUntil: p.strikeUntil, knowsAmber: p.knowsAmber, aid: p.aid } : null,
+    me: p
+      ? {
+          jobs: p.jobs,
+          strikeUntil: p.strikeUntil,
+          knowsAmber: p.knowsAmber,
+          aid: p.aid,
+          population: p.population,
+          startWorth: wealth(p.start),
+          history: p.history,
+          taxFree: p.lent || p.given >= TRADE.generousValue || t.loans.some((l) => l.from === me && l.status === "out"),
+        }
+      : null,
     offers: t.offers.filter(mine),
     chat: t.chat.filter(mine),
     news: t.news.filter((n) => n.to === null || n.to === me),

@@ -257,3 +257,6 @@ body.trade-mode #mapwrap, body.trade-mode #legend, body.trade-mode #mapactions, 
 .gametabs button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 #banner .gametabs { margin-bottom: 4px; }
 body.trade-lobby #mapwrap, body.trade-lobby #legend, body.trade-lobby [data-act="addBot"] { display: none; }
+.t-worth { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 2px solid var(--ink); padding: 8px 12px; margin-bottom: 8px; }
+.t-worth .big { font: 700 26px var(--sans); }
+.spark { display: block; }

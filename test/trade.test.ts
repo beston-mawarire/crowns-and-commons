@@ -17,7 +17,25 @@ function started(players = 3) {
   expect(handle(made.store, made.ps[0].id, { type: "start" }, 2000, newId)).toBeNull();
   const t = made.store.room.trade!;
   const by = (tier: string) => made.ps.find((p) => t.players[p.id].tier === tier)!;
+  fixStarts(t);
   return { ...made, t, rich: by("A"), raw: by("B"), poor: by("C") };
+}
+/** Starts vary from game to game; most tests want a known one. */
+function fixStarts(t: any) {
+  const fixed: Record<string, Record<string, number>> = {
+    A: { gold: 600, workshop: 2, sawmill: 1, forge: 1, loom: 1, timber: 2, ore: 1, wool: 1 },
+    B: { gold: 200, timber: 16, ore: 14, wool: 14, amber: 2 },
+    C: { gold: 200, timber: 6, ore: 4, wool: 5 },
+  };
+  for (const p of Object.values(t.players) as any[]) {
+    p.inv = { ...fixed[p.tier] };
+    p.start = { ...fixed[p.tier] };
+    p.history = [wealth(p.inv)];
+  }
+}
+/** Run the clock to a given moment, alarm by alarm. */
+function runTo(store: Store, until: number) {
+  for (let i = 0; i < 400 && store.room.phase === "trading" && nextAlarm(store.room)! <= until; i++) onAlarm(store, nextAlarm(store.room)!);
 }
 const act = (store: Store, p: Player, msg: object, now: number) => handle(store, p.id, msg, now, newId);
 
@@ -43,7 +61,7 @@ describe("Trade and Treachery", () => {
   it("makes goods over time, only with the right buildings, and sells them in fives", () => {
     const { store, t, rich, raw } = started();
     expect(act(store, raw, { type: "t.make", good: "planks", count: 1 }, 2100)).toMatch(/workshop/);
-    expect(act(store, rich, { type: "t.make", good: "planks", count: 3 }, 2100)).toMatch(/raw materials/);
+    expect(act(store, rich, { type: "t.make", good: "planks", count: 3 }, 2100)).toMatch(/materials/);
     t.players[rich.id].inv.timber = 5;
     expect(act(store, rich, { type: "t.make", good: "planks", count: 5 }, 2100)).toBeNull();
     expect(t.players[rich.id].inv.timber).toBe(0);
@@ -79,7 +97,7 @@ describe("Trade and Treachery", () => {
     expect(t.chat[0].text).not.toContain("<");
     // The secret of the amber goes only to the industrial country.
     const secret = t.events.find((e) => e.kind === "secret")!;
-    onAlarm(store, secret.at);
+    runTo(store, secret.at);
     expect(view(store.room, rich.id, secret.at).trade!.me!.knowsAmber).toBe(true);
     expect(view(store.room, raw.id, secret.at).trade!.me!.knowsAmber).toBe(false);
     expect(view(store.room, raw.id, secret.at).trade!.news.some((x) => x.text.includes("amber"))).toBe(false);
@@ -91,8 +109,8 @@ describe("Trade and Treachery", () => {
 
   it("runs its events on the clock and ends with the biggest grower as winner", () => {
     const { store, t, ps, poor } = started();
-    expect(nextAlarm(store.room)).toBe(Math.min(...t.events.map((e) => e.at)));
-    for (let i = 0; i < 20 && store.room.phase === "trading"; i++) onAlarm(store, nextAlarm(store.room)!);
+    expect(nextAlarm(store.room)).toBe(2000 + TRADE.stockStepMs); // share prices move first
+    runTo(store, t.endsAt);
     expect(store.room.phase).toBe("final");
     expect(t.events.every((e) => e.done)).toBe(true);
     expect(t.news.some((x) => x.text.startsWith("Strike"))).toBe(true);
@@ -115,6 +133,7 @@ describe("Trade and Treachery: the host's two switches", () => {
     handle(made.store, made.ps[0].id, { type: "start" }, 2000, newId);
     const t = made.store.room.trade!;
     const by = (tier: string) => made.ps.find((p) => t.players[p.id].tier === tier)!;
+    fixStarts(t);
     return { ...made, t, rich: by("A"), poor: by("C") };
   }
 
@@ -128,7 +147,7 @@ describe("Trade and Treachery: the host's two switches", () => {
     const news = t.news.filter((x) => x.to === null).map((x) => x.text).join(" | ");
     expect(news).toContain("have made a deal");
     expect(news).not.toMatch(/50 gold|builds/);
-    for (let i = 0; i < 20 && store.room.phase === "trading"; i++) onAlarm(store, nextAlarm(store.room)!);
+    runTo(store, t.endsAt);
     expect(Object.keys(view(store.room, poor.id, t.endsAt + 1).trade!.holdings)).toHaveLength(3); // revealed at the end
   });
 
@@ -136,8 +155,7 @@ describe("Trade and Treachery: the host's two switches", () => {
     const { store, t, rich, poor } = custom({ tradeAutoReturn: true });
     expect(act(store, rich, { type: "t.lend", to: poor.id, building: "workshop", minutes: 1 }, 3000)).toBeNull();
     expect(t.players[poor.id].inv.workshop).toBe(1);
-    expect(nextAlarm(store.room)).toBe(63_000);
-    onAlarm(store, 63_000);
+    runTo(store, 63_000);
     expect(t.players[poor.id].inv.workshop).toBe(0);
     expect(t.players[rich.id].inv.workshop).toBe(2);
     expect(t.loans[0].status).toBe("returned");
@@ -146,10 +164,10 @@ describe("Trade and Treachery: the host's two switches", () => {
   it("lets a poor country keep a borrowed building, and win by it, when that is switched off", () => {
     const { store, t, rich, poor } = custom({ tradeAutoReturn: false });
     act(store, rich, { type: "t.lend", to: poor.id, building: "workshop", minutes: 1 }, 3000);
-    onAlarm(store, 63_000);
+    runTo(store, 63_000);
     expect(t.players[poor.id].inv.workshop).toBe(1); // still there: returning it is a choice
     expect(t.news.some((x) => x.to === poor.id && x.text.includes("or do not"))).toBe(true);
-    for (let i = 0; i < 20 && store.room.phase === "trading"; i++) onAlarm(store, nextAlarm(store.room)!);
+    runTo(store, t.endsAt);
     const result = view(store.room, poor.id, t.endsAt + 1).trade!.result!;
     expect(result.loans[0].status).toBe("kept");
     expect(result.winner).toBe(poor.id);
@@ -181,5 +199,96 @@ describe("the two games are separate", () => {
     handle(store, ps[0].id, { type: "start" }, 2000, newId);
     expect(store.room.phase).toBe("planning");
     expect(view(store.room, ps[0].id, 2001)).toMatchObject({ mode: "election", trade: null });
+  });
+});
+
+describe("Trade and Treachery: the wider economy", () => {
+  it("deals different starts every game, with nobody able to do everything alone", () => {
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 12; seed++) {
+      const store: Store = { room: createRoom("VARY" + seed, seed * 31, 1000, "trade"), timeline: null };
+      const ps = [0, 1, 2, 3].map((i) => join(store.room, newId, "C" + i) as Player);
+      handle(store, ps[0].id, { type: "start" }, 2000 + seed, newId);
+      const t = store.room.trade!;
+      const rich = Object.values(t.players).find((p) => p.tier === "A")!;
+      expect(rich.inv.workshop).toBe(2);
+      expect(["sawmill", "forge", "loom", "mill", "power"].filter((b) => rich.inv[b]).length).toBe(3); // three of the five
+      for (const p of Object.values(t.players)) if (p.tier !== "A") expect(p.inv.workshop).toBeUndefined();
+      seen.add(JSON.stringify(Object.values(t.players).map((p) => p.inv)));
+    }
+    expect(seen.size).toBeGreaterThan(8);
+  });
+
+  it("makes food from grain and needs electricity for machinery", () => {
+    const { store, t, rich } = started();
+    Object.assign(t.players[rich.id].inv, { mill: 1, power: 1, grain: 2, coal: 1, ore: 1, timber: 1 });
+    expect(act(store, rich, { type: "t.make", good: "machinery", count: 1 }, 2100)).toMatch(/materials/); // no electricity yet
+    expect(act(store, rich, { type: "t.make", good: "electricity", count: 1 }, 2100)).toBeNull();
+    expect(act(store, rich, { type: "t.make", good: "food", count: 2 }, 2100)).toBeNull();
+    expect(act(store, rich, { type: "t.make", good: "machinery", count: 1 }, 2100 + 11_000)).toBeNull();
+    expect(t.players[rich.id].inv).toMatchObject({ food: 2, electricity: 0 });
+  });
+
+  it("pays out and collects every minute: income, dividends, food and tax", () => {
+    const { store, t, rich, raw, poor } = started();
+    act(store, rich, { type: "t.stock", id: "wood", n: 2 }, 2100); // 200 gold of shares at 100
+    expect(t.players[rich.id].inv).toMatchObject({ gold: 400, share_wood: 2 });
+    t.players[raw.id].inv.food = 3;
+    runTo(store, 62_000);
+    const price = t.stocks.wood.price;
+    // rich: 400 + income + dividends - 25 to import food = taxed at 5% above 200
+    const before = 400 + TRADE.baseIncome + Math.round(2 * price * TRADE.dividend) - 25;
+    expect(t.players[rich.id].inv.gold).toBe(before - Math.round((before - 200) * TRADE.taxRate));
+    // raw-material country: fed from its own stores, and only just over the tax allowance
+    expect(t.players[raw.id].inv).toMatchObject({ gold: 238, food: 2 }) // 240, less 5% of the 40 above the allowance;
+    expect(t.players[poor.id].inv.gold).toBe(214); // 200 + 40 - 25 for imported food - 1 tax
+    expect(t.players[rich.id].history).toHaveLength(2);
+    expect(view(store.room, rich.id, 62_001).trade!.news.at(-1)!.text).toMatch(/^Payday/);
+  });
+
+  it("waives tax for a country that has been generous since the last payday", () => {
+    const { store, t, rich, poor } = started();
+    act(store, rich, { type: "t.send", to: poor.id, give: { gold: 100 } }, 3000);
+    expect(view(store.room, rich.id, 3001).trade!.me!.taxFree).toBe(true);
+    runTo(store, 62_000);
+    expect(t.players[rich.id].inv.gold).toBe(500 + 40 - 25); // no tax taken
+    runTo(store, 122_000);
+    expect(t.players[rich.id].inv.gold).toBeLessThan(515 + 40 - 25); // taxed again the minute after
+  });
+
+  it("moves share prices with the news, and lets shares be traded like anything else", () => {
+    const { store, t, rich, raw } = started();
+    act(store, rich, { type: "t.stock", id: "metal", n: 1 }, 2100);
+    expect(act(store, rich, { type: "t.stock", id: "metal", n: -2 }, 2200)).toMatch(/do not own/);
+    expect(act(store, rich, { type: "t.send", to: raw.id, give: { share_metal: 1 } }, 2300)).toBeNull();
+    expect(t.players[raw.id].inv.share_metal).toBe(1);
+    const crash = t.events.find((e) => e.kind === "crash")!;
+    runTo(store, crash.at - 1);
+    const beforeCrash = t.stocks.metal.price; // machinery is the dearest good, so Ironworks takes the hit
+    onAlarm(store, crash.at);
+    expect(t.stocks.metal.price).toBeLessThan(beforeCrash * 0.8);
+    expect(t.prices.machinery).toBe(350);
+  });
+
+  it("sends migrants and raiders to countries with no border guard", () => {
+    const { store, t, rich, raw, poor } = started();
+    t.players[rich.id].inv.gold = 1000;
+    expect(act(store, rich, { type: "t.buy", building: "garrison" }, 2100)).toBeNull();
+    const raid = t.events.find((e) => e.kind === "raid")!;
+    runTo(store, raid.at - 1);
+    expect(t.players[rich.id].population).toBe(TRADE.startPopulation);
+    expect(t.players[raw.id].population).toBe(TRADE.startPopulation + TRADE.migrants);
+    const timber = { [raw.id]: t.players[raw.id].inv.timber, [poor.id]: t.players[poor.id].inv.timber };
+    onAlarm(store, raid.at);
+    const hit = [raw, poor].filter((p) => t.players[p.id].inv.timber < timber[p.id]);
+    expect(hit).toHaveLength(1); // exactly one unguarded country is raided
+    expect(t.news.some((x) => x.text.startsWith("Invasion"))).toBe(true);
+    expect(t.news.some((x) => x.text.includes("Scouts report"))).toBe(true); // and there was a warning
+  });
+
+  it("counts shares at today's price when working out worth", () => {
+    const { t } = started();
+    t.stocks.wood.price = 250;
+    expect(wealth({ gold: 10, share_wood: 2 }, t.stocks)).toBe(510);
   });
 });
