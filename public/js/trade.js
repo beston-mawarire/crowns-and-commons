@@ -182,9 +182,11 @@ export function tickTrade() {
     for (const [good, r] of Object.entries(t.recipes)) {
       const missing = ["workshop", ...r.needs].filter((b) => !(inv[b] > 0));
       const can = Math.min(...Object.entries(r.uses).map(([k, n]) => Math.floor((inv[k] ?? 0) / n)));
-      const why = missing.length ? `needs a ${missing.join(" and a ")}` : striking ? "workers on strike" : busy >= (inv.workshop ?? 0) ? "workshops busy" : can < 1 ? "no raw materials" : "";
+      const why = missing.length ? `you are missing: ${missing.join(" and ")}` : striking ? "workers on strike" : busy >= (inv.workshop ?? 0) ? "workshops busy" : can < 1 ? "no raw materials" : "";
+      // Always show everything the product needs, so the list reads the same for every player.
+      const needs = ["workshop", ...r.needs].map((b) => (inv[b] > 0 ? b : `<s>${b}</s>`)).join(" + ");
       const btn = (n, label) => `<button class="btn small" data-t="make" data-good="${good}" data-n="${n}" ${why || can < n ? "disabled" : ""}>${label}</button>`;
-      make += `<div class="t-line"><div><b>${t.names[good]}</b> <span class="muted">from ${words(r.uses)} · sells for ${t.prices[good]}</span>${why ? `<br><span class="small why">${why}</span>` : ""}</div><span class="t-buttons">${btn(1, "Make 1")}${btn(5, "Make 5")}</span></div>`;
+      make += `<div class="t-line"><div><b>${t.names[good]}</b> <span class="muted">from ${words(r.uses)} · sells for ${t.prices[good]}</span><br><span class="small">Needs: ${needs}</span>${why ? ` <span class="small why">(${why})</span>` : ""}</div><span class="t-buttons">${btn(1, "Make 1")}${btn(5, "Make 5")}</span></div>`;
     }
     el("t-make").innerHTML = make;
 
