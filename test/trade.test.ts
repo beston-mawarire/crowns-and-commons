@@ -402,7 +402,7 @@ describe("Leaving and going back to the lobby", () => {
 });
 
 describe("Share payouts and game length", () => {
-  it("pays more each minute in a shorter game, so a share pays back about its price in every game", () => {
+  it("pays more each minute in a shorter game, so a share pays back about twice its price in every game", () => {
     const rates: number[] = [];
     for (const len of TRADE.lengths) {
       const store: Store = { room: createRoom("LEN" + len, 7, 1000, "trade"), timeline: null };
@@ -413,6 +413,85 @@ describe("Share payouts and game length", () => {
       rates.push(t.dividend);
       expect(t.dividend * Math.floor((len * 1000) / TRADE.paydayMs)).toBeCloseTo(TRADE.dividendTotal, 1);
     }
-    expect(rates).toEqual([0.1, 0.067, 0.05]);
+    expect(rates).toEqual([0.2, 0.133, 0.1]);
+  });
+});
+
+describe("Luck and losses", () => {
+  it("gives each game good and bad luck for single countries, and every kind runs", () => {
+    const kinds = new Set<string>();
+    for (let seed = 1; seed <= 12; seed++) {
+      const s: Store = { room: createRoom("L" + seed, seed * 11, 1000, "trade"), timeline: null };
+      const ps = [0, 1, 2, 3].map((i) => join(s.room, newId, "C" + i) as Player);
+      handle(s, ps[0].id, { type: "start" }, 2000, newId);
+      const luck = s.room.trade!.events.filter((e) => e.kind.startsWith("p:"));
+      expect(luck.length).toBeGreaterThanOrEqual(7); // a 15-minute game
+      luck.forEach((e) => kinds.add(e.kind));
+      runTo(s, s.room.trade!.endsAt);
+      expect(s.room.trade!.over).toBe(true);
+    }
+    expect(kinds.size).toBe(12);
+  });
+
+  it("tells the lucky country the details, and everyone else only that something happened", () => {
+    const { store, t, raw, rich } = started();
+    t.events = [{ kind: "p:inheritance", at: 5000, done: false }];
+    const before = Object.fromEntries(Object.entries(t.players).map(([id, p]) => [id, p.inv.gold]));
+    runTo(store, 5000);
+    const who = Object.keys(t.players).find((id) => t.players[id].inv.gold === before[id] + 150)!;
+    expect(who).toBeTruthy();
+    const other = who === raw.id ? rich.id : raw.id;
+    const mine = view(store.room, who, 5001).trade!.news;
+    const theirs = view(store.room, other, 5001).trade!.news;
+    expect(mine.filter((n) => n.kind === "good")).toHaveLength(1);
+    expect(mine.some((n) => n.kind === "luck")).toBe(false);
+    expect(theirs.filter((n) => n.kind === "luck")).toHaveLength(1);
+    expect(theirs.some((n) => n.kind === "good")).toBe(false);
+  });
+
+  it("sends good luck to poorer countries more often, and bad luck to richer ones", () => {
+    const hits = { good: { A: 0, other: 0 }, bad: { A: 0, other: 0 } };
+    for (let i = 0; i < 60; i++) {
+      for (const kind of ["inheritance", "theft"]) {
+        const { store, t } = started();
+        t.events = [{ kind: "p:" + kind, at: 5000 + i, done: false }];
+        const before = Object.fromEntries(Object.entries(t.players).map(([id, p]) => [id, p.inv.gold]));
+        runTo(store, 5000 + i);
+        const id = Object.keys(t.players).find((x) => t.players[x].inv.gold !== before[x])!;
+        hits[kind === "theft" ? "bad" : "good"][t.players[id].tier === "A" ? "A" : "other"]++;
+      }
+    }
+    expect(hits.good.other).toBeGreaterThan(hits.good.A * 2);
+    expect(hits.bad.A).toBeGreaterThan(hits.bad.other);
+  });
+
+  it("can crash a single company: shares lose value and stop paying", () => {
+    const { store, t, rich } = started();
+    act(store, rich, { type: "t.stock", id: "energy", n: 4 }, 2100);
+    const paid = t.players[rich.id].inv.gold;
+    t.events = [{ kind: "w:collapse", at: 5000, done: false }];
+    t.stocks.energy.price = 200; // the dearest company on the exchange
+    runTo(store, 5000);
+    expect(t.stocks.energy.price).toBe(70);
+    runTo(store, 62_000);
+    expect(t.players[rich.id].inv.gold).toBe(paid); // nothing paid at the next payday
+    expect(view(store.room, rich.id, 62_001).trade!.news.at(-1)!.text).toMatch(/Coal & Power paid nothing/);
+    const row = () => view(store.room, rich.id, t.endsAt + 1).trade!.result!.rows.find((r) => r.id === rich.id)!;
+    runTo(store, t.endsAt);
+    expect(row().wealth).toBeLessThan(row().startWealth + 800); // not a free win
+  });
+
+  it("lets a buyer pay double once, and skilled workers make goods twice as fast for a while", () => {
+    const { store, t, rich } = started();
+    const p = t.players[rich.id];
+    p.buyer = true;
+    p.inv.cloth = 10;
+    act(store, rich, { type: "t.sell", good: "cloth" }, 2100);
+    expect(p.inv.gold).toBe(600 + 2 * 5 * 200);
+    act(store, rich, { type: "t.sell", good: "cloth" }, 2200);
+    expect(p.inv.gold).toBe(600 + 3 * 5 * 200);
+    p.fastUntil = 10_000;
+    act(store, rich, { type: "t.make", good: "planks", count: 2 }, 3000);
+    expect(p.jobs[0].per).toBe(3000);
   });
 });

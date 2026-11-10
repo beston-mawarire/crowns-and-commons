@@ -158,7 +158,7 @@ function build() {
       <section class="t-card c-country" data-sec="worth"><h3>Your country</h3><div id="t-worth"></div></section>
       <section class="t-card c-people" data-sec="pay"><h3>Payday <span id="t-pay-in"></span></h3><div id="t-pay"></div></section>
     </div>
-    <section class="t-card c-stocks" data-sec="stocks"><h3>The stock exchange</h3><p class="small muted">Every payday each share pays out <b>${pct(t.dividend)} of its price</b> (in a game this long, a share held from start to finish pays back about its own price). Each company has only ${t.rules.shareSupply} shares: every one bought makes the next dearer, every one sold makes it cheaper. Once they are all owned, buy them from other countries.</p><div id="t-stocks"></div></section>
+    <section class="t-card c-stocks" data-sec="stocks"><h3>The stock exchange</h3><p class="small muted">Every payday each share pays out <b>${pct(t.dividend)} of its price</b> (in a game this long, a share held from start to finish pays out about twice what it cost, if its price holds up). Prices can fall as well as rise: a scandal or a crash can wipe out a company's value and stop its payouts. Each company has only ${t.rules.shareSupply} shares: every one bought makes the next dearer, every one sold makes it cheaper. Once they are all owned, buy them from other countries.</p><div id="t-stocks"></div></section>
     <section class="t-card c-country" data-sec="hold"><h3>What you hold</h3><div id="t-inv"></div></section>
     <section class="t-card c-make" data-sec="make"><h3>Make goods</h3><div id="t-jobs"></div><div id="t-make"></div></section>
     <section class="t-card c-market" data-sec="market"><h3>The market</h3><div id="t-market"></div></section>
@@ -240,7 +240,9 @@ function update() {
     alert += `<div class="locked-note"><b>Aid offer.</b> The market's bankers will give you a workshop and a mill for free. In return they keep ${t.rules.aidShare * 100}% of everything you sell to the market for the rest of the game.<div class="t-buttons"><button class="btn small" data-t="aid" data-accept="1">Accept the aid</button><button class="btn ghost small" data-t="aid" data-accept="0">Turn it down</button></div></div>`;
   if (t.me.aid === "accepted") alert += `<p class="t-flag bad">You accepted aid: the bankers keep ${t.rules.aidShare * 100}% of your market sales.</p>`;
   if (t.tariff) alert += `<p class="t-flag bad"><b>Tariff in force:</b> the market pays ${t.rules.tariffCut * 100}% less for goods from countries that started without a workshop.</p>`;
-  if (t.fair) alert += `<p class="t-flag good"><b>Trade fair:</b> the market is paying ${t.rules.fairBonus * 100}% more for all goods. Sell now.</p>`;
+  if (t.me.buyer) alert += `<p class="t-flag good"><b>A rich buyer is waiting:</b> your next batch sold to the market sells for double.</p>`;
+  if (t.me.fastUntil > api.now()) alert += `<p class="t-flag good"><b>Skilled workers:</b> anything you start making in the next ${Math.ceil((t.me.fastUntil - api.now()) / 1000)} seconds is made twice as fast.</p>`;
+    if (t.fair) alert += `<p class="t-flag good"><b>Trade fair:</b> the market is paying ${t.rules.fairBonus * 100}% more for all goods. Sell now.</p>`;
   setHTML("t-alert", alert);
 
   // Offers
@@ -271,7 +273,7 @@ function update() {
   );
   if (pinned) chat.scrollTop = chat.scrollHeight;
 
-  const label = { world: "world news", pay: "payday", market: "market" };
+  const label = { world: "world news", pay: "payday", market: "market", good: "good luck", bad: "bad luck", luck: "elsewhere" };
   setHTML(
     "t-news",
     t.news
@@ -308,14 +310,15 @@ export function tickTrade() {
   );
 
   // ---- payday and borders
-  const payouts = Object.entries(t.stocks).map(([id, st]) => [id, (inv["share_" + id] ?? 0) * Math.round(st.price * t.dividend)]).filter(([, n]) => n > 0);
+  // Every company you own shares in, with what it will pay (nothing, if it has stopped paying).
+  const payouts = Object.entries(t.stocks).filter(([id]) => (inv["share_" + id] ?? 0) > 0).map(([id, st]) => [id, st.haltUntil > t.nextPay ? 0 : inv["share_" + id] * Math.round(st.price * t.dividend)]);
   const payTotal = payouts.reduce((a, [, n]) => a + n, 0);
   const guarded = (inv.garrison ?? 0) > 0;
   setHTML("t-pay-in", `in ${Math.max(0, Math.ceil((t.nextPay - api.now()) / 1000))}s`);
   setHTML(
     "t-pay",
     (payouts.length
-      ? payouts.map(([id, n]) => `<div class="t-led"><span><i class="sq s-${id}"></i>${t.stockNames[id]} <span class="muted">${inv["share_" + id]} × ${Math.round(t.stocks[id].price * t.dividend)}</span></span><span class="num">${signed(n)}</span></div>`).join("")
+      ? payouts.map(([id, n]) => `<div class="t-led"><span><i class="sq s-${id}"></i>${t.stockNames[id]} <span class="muted">${n ? `${inv["share_" + id]} × ${Math.round(t.stocks[id].price * t.dividend)}` : "not paying this time"}</span></span><span class="num">${n ? signed(n) : `<span class="down">0</span>`}</span></div>`).join("")
       : `<p class="small muted">You own no shares, so payday brings you nothing. Buy some on the stock exchange, or trade for them.</p>`) +
       `<div class="t-led total"><span>Next payday</span><span class="num">${signed(payTotal)} gold</span></div>
     <p class="small">${guarded ? `<span class="up">Border guarded.</span> Raiders will pass you by.` : `<span class="down">Border not guarded.</span> Raiders can get in.`}</p>
@@ -403,7 +406,7 @@ export function tickTrade() {
         const b = (n, text, ok, cls = "ghost") => `<button class="btn ${cls} small" data-t="stock" data-id="${id}" data-n="${n}" ${ok ? "" : "disabled"} title="${n > 0 ? "Costs" : "Fetches"} ${cost(st.price, n)} gold">${text}</button>`;
         const buy5 = Math.min(5, st.left);
         return `<div class="t-stock s-${id}"><div class="who"><b>${t.stockNames[id]}</b><br><span class="small muted">${follows[id]}</span><br><span class="small ${st.left ? "" : "down"}">${st.left ? `${st.left} of ${R.shareSupply} for sale` : "all owned"}</span></div>
-          <div class="px"><b class="num">${st.price}</b> <span class="${change >= 0 ? "up" : "down"}">${change > 0 ? "▲ +" : change < 0 ? "▼ −" : "• "}${Math.abs(change)}%</span><br><span class="small">pays <b>${Math.round(st.price * t.dividend)}</b> a share</span><br><span class="${trend}">${spark(st.hist.length > 1 ? st.hist : [st.price, st.price], 90, 20)}</span></div>
+          <div class="px"><b class="num">${st.price}</b> <span class="${change >= 0 ? "up" : "down"}">${change > 0 ? "▲ +" : change < 0 ? "▼ −" : "• "}${Math.abs(change)}%</span><br>${st.haltUntil > api.now() ? `<span class="small down">paying nothing for now</span>` : `<span class="small">pays <b>${Math.round(st.price * t.dividend)}</b> a share</span>`}<br><span class="${trend}">${spark(st.hist.length > 1 ? st.hist : [st.price, st.price], 90, 20)}</span></div>
           <div class="own small">${own ? `You own <b>${own}</b><br>worth ${(own * st.price).toLocaleString()}<br>pays <b>${own * Math.round(st.price * t.dividend)}</b> each payday` : `<span class="muted">You own none</span>`}</div>
           <span class="t-buttons">${b(1, `Buy 1 · ${st.price}`, st.left >= 1 && gold >= st.price, "")}${buy5 > 1 ? b(buy5, `Buy ${buy5} · ${cost(st.price, buy5)}`, gold >= cost(st.price, buy5), "") : ""}${b(-1, "Sell 1", own >= 1)}${own > 1 ? b(-own, `Sell all · ${cost(st.price, -own)}`, true) : ""}</span></div>`;
       })

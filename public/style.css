@@ -319,3 +319,6 @@ table.t-causes th, table.t-causes td { font-size: 12.5px; padding: 5px 6px; }
 .t-card.min > h3:first-child { border-bottom: 0; margin-bottom: 0; }
 i.sq { display: inline-block; width: 10px; height: 10px; margin-right: 6px; background: var(--s); border: 1px solid var(--ink); }
 .t-two:has(> .min) { align-items: start; }
+.t-scroll li.n-good { border-left: 5px solid var(--up); padding-left: 6px; background: #e9f5ec; }
+.t-scroll li.n-bad { border-left: 5px solid var(--down); padding-left: 6px; background: #fbeceb; }
+.t-scroll li.n-luck { border-left: 5px solid var(--faint); padding-left: 6px; }

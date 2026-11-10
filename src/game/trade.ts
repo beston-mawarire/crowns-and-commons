@@ -69,10 +69,10 @@ export const TRADE = {
   paydayMs: 60_000,
   /**
    * Over a whole game a share pays out about this many times its price, however long the game.
-   * Each payday it pays this divided by the number of paydays: 10% a minute in a 10-minute game,
-   * about 7% in 15 minutes, 5% in 20.
+   * Each payday it pays this divided by the number of paydays: 20% a minute in a 10-minute game,
+   * about 13% in 15 minutes, 10% in 20. Prices can fall as well as rise, so a share can still lose money.
    */
-  dividendTotal: 1,
+  dividendTotal: 2,
   /** Each company has only so many shares. Buying one lifts the price, selling one lowers it. */
   shareSupply: 10,
   shareImpact: 0.05,
@@ -99,6 +99,9 @@ export interface TradePlayer {
   jobs: Job[];
   knowsAmber: boolean;
   strikeUntil: number;
+  /** Good fortune that lasts a while or until used: faster workshops, a buyer paying double. */
+  fastUntil: number;
+  buyer: boolean;
   aid: "none" | "offered" | "accepted" | "declined";
   /** Worth at each payday, for the growth chart. */
   history: number[];
@@ -139,7 +142,7 @@ export interface TradeState {
   startedAt: number;
   endsAt: number;
   prices: Record<string, number>;
-  stocks: Record<string, { price: number; prev: number; hist: number[]; left: number }>;
+  stocks: Record<string, { price: number; prev: number; hist: number[]; left: number; haltUntil: number }>;
   /** What each share pays out every payday, as a share of its price; set by the length of the game. */
   dividend: number;
   /** How many of each product the market wants at a time: usually five, now and then three or one. */
@@ -150,7 +153,7 @@ export interface TradeState {
   players: Record<string, TradePlayer>;
   offers: Offer[];
   chat: { id: number; from: string; to: string | null; text: string; t: number }[];
-  news: { id: number; t: number; text: string; to: string | null; kind?: string }[];
+  news: { id: number; t: number; text: string; to: string | null; kind?: string; not?: string }[];
   events: { at: number; kind: string; done: boolean }[];
   tariffUntil: number;
   deals: Deal[];
@@ -282,7 +285,7 @@ export function startTrade(players: Who[], lengthSec: number, seed: number, now:
     startedAt: now,
     endsAt: now + length,
     prices: Object.fromEntries(GOODS.map((g) => [g, RECIPES[g].price])),
-    stocks: Object.fromEntries(STOCKS.map((s) => [s, { price: 100, prev: 100, hist: [100], left: TRADE.shareSupply }])),
+    stocks: Object.fromEntries(STOCKS.map((s) => [s, { price: 100, prev: 100, hist: [100], left: TRADE.shareSupply, haltUntil: 0 }])),
     batch: Object.fromEntries(GOODS.map((g) => [g, TRADE.batch])),
     dividend: Math.round((TRADE.dividendTotal / Math.max(1, Math.floor(length / TRADE.paydayMs))) * 1000) / 1000,
     fairUntil: 0,
@@ -310,11 +313,19 @@ export function startTrade(players: Who[], lengthSec: number, seed: number, now:
   };
   players.forEach((p, i) => {
     const inv = dealStart(tiers[i], rng);
-    t.players[p.id] = { tier: tiers[i], inv, start: { ...inv }, jobs: [], knowsAmber: false, strikeUntil: 0, aid: "none", history: [wealth(inv)], ledger: {} };
+    t.players[p.id] = { tier: tiers[i], inv, start: { ...inv }, jobs: [], knowsAmber: false, strikeUntil: 0, fastUntil: 0, buyer: false, aid: "none", history: [wealth(inv)], ledger: {} };
   });
   // World events: a few each game, picked at random, at times nobody can plan for.
   const worldCount = Math.max(2, Math.round(lengthSec / 300) + 1);
   for (const kind of shuffle([...WORLD], rng).slice(0, worldCount)) t.events.push({ kind: "w:" + kind, at: now + Math.round(length * (0.14 + rng() * 0.8)), done: false });
+  // Luck, good and bad, that falls on one country at a time: about one every two minutes.
+  const luckCount = Math.max(3, Math.round(lengthSec / 120));
+  const good = shuffle([...LUCK_GOOD], rng);
+  const bad = shuffle([...LUCK_BAD], rng);
+  for (let i = 0; i < luckCount; i++) {
+    const kind = i % 2 ? bad[(i >> 1) % bad.length] : good[(i >> 1) % good.length];
+    t.events.push({ kind: "p:" + kind, at: now + Math.round(length * (0.08 + ((i + rng()) / luckCount) * 0.86)), done: false });
+  }
   say(t, now, "The market is open. Make goods, sell them to the market, and trade with each other however you like.");
   return t;
 }
@@ -344,17 +355,116 @@ function shock(t: TradeState, sector: string | null, factor: number) {
 /** Once a minute: every share pays out. */
 function payday(t: TradeState, at: number) {
   for (const [id, p] of Object.entries(t.players)) {
-    const paid = STOCKS.map((x) => [x, (p.inv[SHARE(x)] ?? 0) * Math.round(t.stocks[x].price * t.dividend)] as const).filter(([, n]) => n > 0);
+    const paid = STOCKS.filter((x) => t.stocks[x].haltUntil <= at).map((x) => [x, (p.inv[SHARE(x)] ?? 0) * Math.round(t.stocks[x].price * t.dividend)] as const).filter(([, n]) => n > 0);
+    const halted = STOCKS.filter((x) => t.stocks[x].haltUntil > at && (p.inv[SHARE(x)] ?? 0) > 0);
     const total = paid.reduce((a, [, n]) => a + n, 0);
     p.inv.gold = (p.inv.gold ?? 0) + total;
     note(p, "dividends", total);
     p.history.push(wealth(p.inv, t.stocks));
-    if (total) say(t, at, `Payday: your shares paid out ${total} gold (${paid.map(([x, n]) => `${STOCK_NAMES[x]} ${n}`).join(", ")}).`, id, "pay");
+    if (total || halted.length)
+      say(t, at, `Payday: ${total ? `your shares paid out ${total} gold (${paid.map(([x, n]) => `${STOCK_NAMES[x]} ${n}`).join(", ")})` : "no payout"}${halted.length ? `. ${halted.map((x) => STOCK_NAMES[x]).join(" and ")} paid nothing this time` : ""}.`, id, "pay");
+  }
+}
+
+/**
+ * Luck that falls on one country. Good luck tends to find poorer countries and bad luck richer
+ * ones, but either can strike anyone.
+ */
+const LUCK_GOOD = ["inheritance", "buyer", "skilled", "gift", "harvest", "investor"];
+const LUCK_BAD = ["theft", "flood", "spoil", "fine", "breakdown", "fraud"];
+function luck(t: TradeState, kind: string, now: number, name: (id: string) => string) {
+  const ids = Object.keys(t.players);
+  const rng = mulberry32(t.seed + now * 3);
+  const good = LUCK_GOOD.includes(kind);
+  // Weighted draw: the poorer you are the likelier good luck is, the richer the likelier bad.
+  const worth = ids.map((id) => Math.max(100, wealth(t.players[id].inv, t.stocks)));
+  const weights = worth.map((w) => (good ? 1 / w : w));
+  let roll = rng() * weights.reduce((a, b) => a + b, 0);
+  const id = ids[Math.max(0, weights.findIndex((w) => (roll -= w) <= 0))];
+  const p = t.players[id];
+  const inv = p.inv;
+  const tell = (mine: string, all: string) => {
+    say(t, now, mine, id, good ? "good" : "bad");
+    // Everyone else hears that something happened, but not the details.
+    t.news.push({ id: t.nextId++, t: now, text: all, to: null, kind: "luck", not: id });
+  };
+  const most = (keys: readonly string[]) => keys.reduce((a, b) => ((inv[a] ?? 0) >= (inv[b] ?? 0) ? a : b));
+  if (kind === "inheritance") {
+    inv.gold = (inv.gold ?? 0) + 150;
+    tell("Good news: a fortune left by a former ruler is found in your treasury. You gain 150 gold.", `${name(id)} finds 150 gold in an old treasury.`);
+  } else if (kind === "buyer") {
+    p.buyer = true;
+    tell("Good news: a rich foreign buyer wants your goods. The next batch you sell to the market sells for double.", `A rich foreign buyer comes looking for ${name(id)}'s goods.`);
+  } else if (kind === "skilled") {
+    p.fastUntil = now + 90_000;
+    tell("Good news: skilled workers arrive. For the next 90 seconds, anything you start making is made twice as fast.", `Skilled workers arrive in ${name(id)}.`);
+  } else if (kind === "gift" || kind === "investor") {
+    const open = STOCKS.filter((x) => t.stocks[x].left > 0);
+    if (kind === "gift" && open.length) {
+      const x = open[Math.floor(rng() * open.length)];
+      t.stocks[x].left -= 1;
+      inv[SHARE(x)] = (inv[SHARE(x)] ?? 0) + 1;
+      tell(`Good news: a grateful ally sends you a ${STOCK_NAMES[x]} share.`, `${name(id)} is given a ${STOCK_NAMES[x]} share by an ally.`);
+    } else {
+      inv.gold = (inv.gold ?? 0) + 200;
+      tell("Good news: a foreign investor puts 200 gold into your country.", `A foreign investor puts 200 gold into ${name(id)}.`);
+    }
+  } else if (kind === "harvest") {
+    const raw = most(RAWS);
+    inv[raw] = (inv[raw] ?? 0) + 6;
+    tell(`Good news: a bumper year. You gain 6 ${raw}.`, `${name(id)} has a bumper year for ${raw}.`);
+  } else if (kind === "theft" || kind === "fine") {
+    const share = kind === "theft" ? 0.15 : 0.1;
+    const take = Math.round((inv.gold ?? 0) * share);
+    inv.gold = (inv.gold ?? 0) - take;
+    tell(
+      kind === "theft" ? `Bad news: thieves break into your treasury and take ${take} gold.` : `Bad news: your officials are caught taking bribes. You are fined ${take} gold.`,
+      kind === "theft" ? `Thieves rob ${name(id)}'s treasury.` : `${name(id)} is fined for bribery.`,
+    );
+  } else if (kind === "flood") {
+    const raw = most(RAWS);
+    const lost = Math.ceil((inv[raw] ?? 0) / 2);
+    inv[raw] = (inv[raw] ?? 0) - lost;
+    tell(`Bad news: floods sweep through your stores. You lose ${lost} ${raw}.`, `Floods hit ${name(id)}.`);
+  } else if (kind === "spoil") {
+    const goods = GOODS.filter((g) => (inv[g] ?? 0) > 0);
+    if (goods.length) {
+      const g = goods.reduce((a, b) => (inv[a] * RECIPES[a].price >= inv[b] * RECIPES[b].price ? a : b));
+      const lost = Math.ceil(inv[g] / 2);
+      inv[g] -= lost;
+      tell(`Bad news: rats and damp get into your warehouse. You lose ${lost} ${g}.`, `${name(id)}'s warehouse is ruined by damp.`);
+    } else {
+      const lost = Math.min(inv.gold ?? 0, 80);
+      inv.gold = (inv.gold ?? 0) - lost;
+      tell(`Bad news: your empty warehouse falls down and costs ${lost} gold to clear.`, `${name(id)}'s warehouse falls down.`);
+    }
+  } else if (kind === "breakdown") {
+    if ((inv.workshop ?? 0) > 0) {
+      p.strikeUntil = Math.max(p.strikeUntil, now) + 60_000;
+      for (const job of p.jobs) job.startedAt += 60_000;
+      tell("Bad news: your machines break down. Your workshops stand still for 60 seconds.", `${name(id)}'s workshops break down.`);
+    } else {
+      const lost = Math.min(inv.gold ?? 0, 80);
+      inv.gold = (inv.gold ?? 0) - lost;
+      tell(`Bad news: a storm damages your roads. Repairs cost ${lost} gold.`, `A storm damages ${name(id)}'s roads.`);
+    }
+  } else if (kind === "fraud") {
+    const held = STOCKS.filter((x) => (inv[SHARE(x)] ?? 0) > 0);
+    if (held.length) {
+      const x = held[Math.floor(rng() * held.length)];
+      inv[SHARE(x)] -= 1;
+      t.stocks[x].left += 1;
+      tell(`Bad news: a swindler cheats you out of a ${STOCK_NAMES[x]} share.`, `A swindler cheats ${name(id)} out of a share.`);
+    } else {
+      const take = Math.round((inv.gold ?? 0) * 0.1);
+      inv.gold = (inv.gold ?? 0) - take;
+      tell(`Bad news: a swindler sells you shares in a company that does not exist. You lose ${take} gold.`, `A swindler cheats ${name(id)}.`);
+    }
   }
 }
 
 /** Things that happen to the whole world. A few are picked for each game. */
-const WORLD = ["winter", "drought", "fire", "invention", "panic", "rally", "fair", "bonus", "windfall", "relief", "fashion"];
+const WORLD = ["winter", "drought", "fire", "invention", "panic", "rally", "fair", "bonus", "windfall", "relief", "fashion", "scandal", "takeover", "collapse"];
 function world(t: TradeState, kind: string, now: number, name: (id: string) => string) {
   const all = Object.values(t.players);
   const price = (good: string, f: number) => (t.prices[good] = Math.round(t.prices[good] * f));
@@ -404,6 +514,22 @@ function world(t: TradeState, kind: string, now: number, name: (id: string) => s
     const take = Math.round((t.players[id].inv.gold ?? 0) * 0.1);
     t.players[id].inv.gold -= take;
     tell(`A world tax on the richest: ${name(id)} is worth the most and pays a tenth of its gold (${take}).`);
+  } else if (kind === "scandal") {
+    // One company's books turn out to be cooked.
+    const x = STOCKS[Math.floor(mulberry32(t.seed + now)() * STOCKS.length)];
+    shock(t, x, 0.5);
+    t.stocks[x].haltUntil = now + TRADE.paydayMs;
+    tell(`Scandal at ${STOCK_NAMES[x]}! Its books were cooked. Its shares halve in price, to ${t.stocks[x].price}, and it pays nothing at the next payday.`);
+  } else if (kind === "collapse") {
+    // The company whose shares have risen the most is the one with furthest to fall.
+    const x = STOCKS.reduce((a, b) => (t.stocks[a].price >= t.stocks[b].price ? a : b));
+    shock(t, x, 0.35);
+    t.stocks[x].haltUntil = now + 2 * TRADE.paydayMs;
+    tell(`Crash! ${STOCK_NAMES[x]}, the dearest company on the exchange, collapses. Its shares lose two thirds of their value, to ${t.stocks[x].price}, and it pays nothing for the next two paydays.`);
+  } else if (kind === "takeover") {
+    const x = STOCKS.reduce((a, b) => (t.stocks[a].price <= t.stocks[b].price ? a : b));
+    shock(t, x, 1.6);
+    tell(`Takeover bid! A foreign giant wants ${STOCK_NAMES[x]}, the cheapest company on the exchange. Its shares jump to ${t.stocks[x].price}.`);
   } else if (kind === "relief") {
     const id = byWorth[0];
     t.players[id].inv.gold = (t.players[id].inv.gold ?? 0) + 100;
@@ -424,7 +550,9 @@ export function tradeTick(t: TradeState, who: Who[], now: number) {
     for (const s of STOCKS) {
       const st = t.stocks[s];
       st.prev = st.price;
-      st.price = Math.max(10, Math.round(st.price * (1.01 + (rng() - 0.5) * 0.14)));
+      // A gentle drift, a pull back towards 100 so no price runs away for ever, and some noise.
+      const pull = (100 / st.price) ** 0.08;
+      st.price = Math.max(10, Math.round(st.price * pull * (1.005 + (rng() - 0.5) * 0.2)));
       st.hist = [...st.hist, st.price].slice(-16);
     }
     // The size of the market's orders: usually five at a time, now and then three or one.
@@ -510,6 +638,7 @@ export function tradeTick(t: TradeState, who: Who[], now: number) {
       t.tariffUntil = now + (t.endsAt - t.startedAt) * 0.12;
       say(t, now, `New tariff: for a while, the market pays ${TRADE.tariffCut * 100}% less for goods from countries that started without a workshop. Raw materials are not affected.`);
     } else if (ev.kind.startsWith("w:")) world(t, ev.kind.slice(2), now, name);
+    else if (ev.kind.startsWith("p:")) luck(t, ev.kind.slice(2), now, name);
     ids.forEach((id, i) => note(t.players[id], "events", wealth(t.players[id].inv, held) - before[i]));
   }
   // Loans falling due.
@@ -566,7 +695,7 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
       if (!has(p.inv, uses)) return "You do not have enough materials for that.";
       move(p.inv, {}, uses);
       note(p, "made", -wealth(uses));
-      p.jobs.push({ id: t.nextId++, good: msg.good, count, made: 0, startedAt: now, per: recipe.seconds * 1000 });
+      p.jobs.push({ id: t.nextId++, good: msg.good, count, made: 0, startedAt: now, per: recipe.seconds * (p.fastUntil > now ? 500 : 1000) });
       return null;
     }
     case "t.sell": {
@@ -578,6 +707,9 @@ export function tradeHandle(t: TradeState, who: Who[], me: string, msg: any, now
       if (t.fairUntil > now) pay *= 1 + TRADE.fairBonus;
       if (t.tariffUntil > now && p.tier !== "A") pay *= 1 - TRADE.tariffCut;
       if (p.aid === "accepted") pay *= 1 - TRADE.aidShare;
+      const lucky = p.buyer;
+      if (lucky) pay *= 2;
+      p.buyer = false;
       pay = Math.round(pay);
       book(t, [me], "market", () => {
         p.inv[msg.good] -= size;
@@ -788,6 +920,8 @@ export function tradeView(t: TradeState, me: string, now: number) {
       ? {
           jobs: p.jobs,
           strikeUntil: p.strikeUntil,
+          fastUntil: p.fastUntil,
+          buyer: p.buyer,
           knowsAmber: p.knowsAmber,
           aid: p.aid,
           startWorth: wealth(p.start),
@@ -797,7 +931,7 @@ export function tradeView(t: TradeState, me: string, now: number) {
       : null,
     offers: t.offers.filter(mine),
     chat: t.chat.filter(mine),
-    news: t.news.filter((n) => n.to === null || n.to === me),
+    news: t.news.filter((n) => (n.to === null || n.to === me) && n.not !== me),
     result,
   };
 }

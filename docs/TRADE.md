@@ -84,8 +84,9 @@ doubles it, while the industrial country would need to add thousands to keep pac
 ## Payday
 
 Every minute, every share pays out part of its current price in gold. The rate is set by the
-length of the game so that, over a whole game, a share pays back about its own price: 10% a
-minute in a 10-minute game, about 7% in 15 minutes, 5% in 20. That is the only thing
+length of the game so that, over a whole game, a share pays out about twice its price: 20% a
+minute in a 10-minute game, about 13% in 15 minutes, 10% in 20. A company in trouble (a
+scandal or a crash) pays nothing for a payday or two. That is the only thing
 that happens at payday: there is no tax, and nothing has to be fed.
 
 ## The market's orders
@@ -103,7 +104,11 @@ Farm & Loom, Coal & Power. Each has only **10 shares**. Shares start at 100 gold
   for everyone (which also raises what every holder is paid).
 - Once all ten are owned, the only way to get one is from another country: in a safe swap,
   as a gift, or on a promise.
-- Prices also drift every 30 seconds and jump when the news touches their industry.
+- Prices also move every 30 seconds (up or down by as much as a tenth, with a slight pull back
+  towards 100) and jump when the news touches their industry.
+- **Shares can lose money.** A scandal halves one company's price and stops its next payout;
+  a crash takes two thirds off the dearest company and stops two payouts; a panic hits them
+  all. A takeover bid, on the other hand, lifts the cheapest company by 60%.
 - Shares count towards worth at their current price.
 
 The limit of ten shares per company keeps the payouts from snowballing: shares are a prize to
@@ -115,12 +120,28 @@ A border guard costs 200 gold. The game warns that raiders are gathering; when t
 they hit one country without a guard and take a fifth of its gold and a quarter of its raw
 materials.
 
+## Luck
+
+Each game also holds about one piece of luck every two minutes, each falling on a single
+country, alternating good and bad. Good luck is likelier to find a poorer country and bad
+luck a richer one, but either can strike anyone. The country concerned is told the details;
+everyone else only hears that something happened there.
+
+- **Good:** a lost fortune (150 gold), a rich foreign buyer (the next batch sold to the market
+  pays double), skilled workers (anything started in the next 90 seconds is made twice as
+  fast), a share given by an ally, a foreign investor (200 gold), a bumper year (6 of a raw
+  material).
+- **Bad:** thieves (15% of gold), a bribery fine (10% of gold), floods (half of the largest raw
+  material), damp in the warehouse (half of the most valuable goods), machines breaking down
+  (workshops stop for 60 seconds), a swindler (one share lost).
+
 ## World events
 
 On top of the fixed timetable below, each game picks a few world events at random (three in
 a 10-minute game, four in 15, five in 20) and fires them at times nobody can plan for:
 a hard winter, a drought, forest fires, a new invention, a new fashion, a stock exchange
-panic or rally, a trade fair, an extra payout to shareholders, a world tax on the richest country, and relief
+panic or rally, a company scandal, a crash, a takeover bid, a trade fair, an extra payout to
+shareholders, a world tax on the richest country, and relief
 for the poorest. They move prices, share prices and what countries hold.
 
 ## What happens during the game
@@ -152,7 +173,7 @@ come from. When the market closes, the results show for every country:
 
 - what it started with, its worth at the start and the end, and a chart of it;
 - where its growth came from: making and selling goods, deals with other countries, share
-  payouts, share prices and events (these always add up to the total);
+  payouts, share prices and events, luck included (these always add up to the total);
 - what its worth is made of at the start and the end: gold, raw materials, goods, buildings
   and shares;
 - how the price of raw materials moved, every deal in order, and four questions to talk about.
@@ -161,7 +182,7 @@ come from. When the market closes, the results show for every country:
 
 The numbers (prices, production times, building costs, event sizes) are a first guess and
 live at the top of `src/game/trade.ts`. In particular it is not yet known whether the poorer
-starts can realistically out-grow the industrial one, whether paying back a share's price once
+starts can realistically out-grow the industrial one, whether paying out twice a share's price
 per game, with ten shares a company, makes the stock exchange too strong compared with making and selling goods.
 
 ## On screen
