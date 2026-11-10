@@ -188,10 +188,14 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
     }
     case "settings": {
       if (room.phase !== "lobby") return "Settings can only change in the lobby.";
+      // Anyone in the lobby may switch between the two games; the rest is for the host.
+      if (msg.mode === "election" || msg.mode === "trade") {
+        room.settings.mode = msg.mode;
+        if (Object.keys(msg).length === 2) return null;
+      }
       if (!mayHost(room, playerId)) return "Only the host can change the settings.";
       if ((RULES.simChoices as readonly number[]).includes(msg.simSec)) room.settings.simSec = msg.simSec;
       if ((RULES.planChoices as readonly number[]).includes(msg.planSec)) room.settings.planSec = msg.planSec;
-      if (msg.mode === "election" || msg.mode === "trade") room.settings.mode = msg.mode;
       if (TRADE.lengths.includes(msg.tradeSec)) room.settings.tradeSec = msg.tradeSec;
       if (typeof msg.tradeOpen === "boolean") room.settings.tradeOpen = msg.tradeOpen;
       if (typeof msg.tradeAutoReturn === "boolean") room.settings.tradeAutoReturn = msg.tradeAutoReturn;

@@ -65,12 +65,21 @@ function boot() {
       const res = await fetch("/api/rooms", { method: "POST" });
       const data = await res.json();
       if (!data.code) throw new Error(data.error || "No room");
-      location.href = "/?room=" + data.code;
+      location.href = "/?room=" + data.code + (S.homeGame === "trade" ? "&game=trade" : "");
     } catch {
       toast("Could not open a room. Please try again.");
       $("#create").disabled = false;
     }
   };
+  // The two games, as tabs on the front page.
+  document.querySelectorAll(".gametabs [data-game]").forEach(
+    (tab) =>
+      (tab.onclick = () => {
+        S.homeGame = tab.dataset.game;
+        document.querySelectorAll(".gametabs [data-game]").forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
+        document.querySelectorAll("#home [data-panel]").forEach((p) => (p.hidden = p.dataset.panel !== S.homeGame));
+      }),
+  );
   $("#joinform").onsubmit = (e) => {
     e.preventDefault();
     const v = $("#joincode").value.trim().toUpperCase();
@@ -275,6 +284,8 @@ function render() {
     return renderTrade({ st: () => S.st, send, esc, hex, now, toast });
   }
   leaveTrade();
+  // The trading game has no map and no bots, so its lobby hides both.
+  document.body.classList.toggle("trade-lobby", st.phase === "lobby" && st.mode === "trade");
   syncDraft();
 
   if (S.lastPhase !== st.phase) {
@@ -400,7 +411,18 @@ function renderCentre() {
   } else if (st.outcome?.kind === "national")
     banner = `<h2>${names([st.outcome.winner])} wins the election</h2><p>With ${st.seats.total[st.outcome.winner]} of the ${st.seats.all} seats in the council (${pct(st.results2.parties[st.outcome.winner].share)} of all votes).</p>`;
   if (st.phase === "planning" && st.issue && !st.you.eliminated) banner += `<p class="issue"><b>This year's big issue: ${esc(st.issue.name)}.</b> Laws about ${issueAreas()} count double.</p>`;
+  if (st.phase === "lobby") {
+    // A room opened from the Trade and Treachery tab starts on that game.
+    const wanted = new URLSearchParams(location.search).get("game");
+    if (wanted) {
+      history.replaceState(null, "", "/?room=" + st.code);
+      if (wanted === "trade" && st.mode !== "trade" && st.players.length === 1) send({ type: "settings", mode: "trade" });
+    }
+    const tab = (id, label) => `<button role="tab" data-game="${id}" aria-selected="${st.mode === id}">${label}</button>`;
+    banner = `<div class="gametabs" role="tablist" aria-label="Choose a game">${tab("election", "Crowns &amp; Commons")}${tab("trade", "Trade and Treachery")}</div><p class="small muted">Anyone here can switch the game until it starts.</p>` + banner;
+  }
   $("#banner").innerHTML = banner;
+  $("#banner").querySelectorAll("[data-game]").forEach((b) => (b.onclick = () => send({ type: "settings", mode: b.dataset.game })));
 
   // Map: one region per party. In the lobby it previews the split.
   const n = Math.min(5, Math.max(2, st.regions.length || st.players.length));
@@ -549,7 +571,6 @@ function lobbyPanel() {
       .map((c) => `<button data-color="${c.id}" style="background:${c.hex}" aria-label="${c.id}" aria-pressed="${mine.color === c.id}" ${taken.has(c.id) ? "disabled" : ""}></button>`)
       .join("")}</div></div>
     <h3>Game settings</h3>
-    <div class="field"><label for="mode">Which game</label><select id="mode" ${host ? "" : "disabled"}><option value="election" ${st.mode === "trade" ? "" : "selected"}>Crowns &amp; Commons (the election game)</option><option value="trade" ${st.mode === "trade" ? "selected" : ""}>Trade and Treachery (the trading game)</option></select></div>
     ${st.mode === "trade" ? tradeLobby(host) : electionLobby(host, opt, mins)}`;
 }
 
@@ -824,7 +845,6 @@ function wireRight(el) {
       send({ type: "profile", name: name.value });
     };
   el.querySelectorAll("[data-color]").forEach((b) => (b.onclick = () => send({ type: "profile", color: b.dataset.color })));
-  if (el.querySelector("#mode")) el.querySelector("#mode").onchange = (e) => send({ type: "settings", mode: e.target.value });
   if (el.querySelector("#topen")) el.querySelector("#topen").onchange = (e) => send({ type: "settings", tradeOpen: e.target.value === "1" });
   if (el.querySelector("#tret")) el.querySelector("#tret").onchange = (e) => send({ type: "settings", tradeAutoReturn: e.target.value === "1" });
   if (el.querySelector("#tlen")) el.querySelector("#tlen").onchange = (e) => send({ type: "settings", tradeSec: Number(e.target.value) });

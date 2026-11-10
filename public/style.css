@@ -248,3 +248,12 @@ body.trade-mode #mapwrap, body.trade-mode #legend, body.trade-mode #mapactions, 
 .t-say { display: grid; grid-template-columns: 110px 1fr; gap: 6px; margin-top: 8px; }
 .t-banner { text-align: center; margin-bottom: 14px; }
 .t-banner h2 { font-size: clamp(22px, 3.4vw, 32px); }
+
+/* ---- the two games, as tabs */
+.gametabs { display: inline-flex; border: 2px solid var(--ink); margin-bottom: 14px; flex-wrap: wrap; }
+.gametabs button { font: 700 15px var(--serif); padding: 9px 18px; background: var(--paper); color: var(--ink); border: 0; cursor: pointer; }
+.gametabs button + button { border-left: 2px solid var(--ink); }
+.gametabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.gametabs button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+#banner .gametabs { margin-bottom: 4px; }
+body.trade-lobby #mapwrap, body.trade-lobby #legend, body.trade-lobby [data-act="addBot"] { display: none; }

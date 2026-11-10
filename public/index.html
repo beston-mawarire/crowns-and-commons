@@ -12,9 +12,20 @@
     <!-- Front door: shown when there is no ?room= in the address -->
     <section id="home" hidden>
       <div class="home-card">
-        <p class="kicker">Win votes, not wars</p>
-        <h1>Crowns <span class="amp">&amp;</span> Commons</h1>
-        <p class="lede">Two to five parties. One small continent. Choose your laws, win over the people, win your region, then win the country.</p>
+        <div class="gametabs" role="tablist" aria-label="Choose a game">
+          <button role="tab" data-game="election" aria-selected="true">Crowns &amp; Commons</button>
+          <button role="tab" data-game="trade" aria-selected="false">Trade and Treachery</button>
+        </div>
+        <div data-panel="election">
+          <p class="kicker">Win votes, not wars</p>
+          <h1>Crowns <span class="amp">&amp;</span> Commons</h1>
+          <p class="lede">Two to five parties. One small continent. Choose your laws, win over the people, win your region, then win the country.</p>
+        </div>
+        <div data-panel="trade" hidden>
+          <p class="kicker">Make deals. Keep them, or don't</p>
+          <h1>Trade <span class="amp">and</span> Treachery</h1>
+          <p class="lede">Three to five countries, one live market. Some start with industry, some with raw materials, some with almost nothing. Trade, bluff and bargain your way up.</p>
+        </div>
         <div class="home-actions">
           <button id="create" class="btn big">Open a new room</button>
           <form id="joinform">
@@ -22,12 +33,19 @@
             <button class="btn ghost">Join</button>
           </form>
         </div>
-        <ol class="howto">
+        <ol class="howto" data-panel="election">
           <li><b>Choose your laws.</b> Two or three in each of nine areas. Every law makes some people happy and others angry.</li>
           <li><b>Campaign.</b> Up to three actions each round, paid for with gold. You can't borrow.</li>
           <li><b>Watch the votes come in.</b> The map fills with your colour, and the news tells you how people are reacting.</li>
           <li><b>Win enough votes in your own region</b> to reach the national election. There, votes become seats in the council. Win the most seats, or make a deal with another party, to win the game.</li>
         </ol>
+        <ol class="howto" data-panel="trade" hidden>
+          <li><b>Run one country.</b> Everyone starts with different things, and nobody is told who got what.</li>
+          <li><b>Make goods and sell them.</b> Turn timber, ore and wool into goods, and sell them to the market in batches of five.</li>
+          <li><b>Trade with each other.</b> A safe swap happens all at once. Anything sent on trust is only as good as the promise behind it.</li>
+          <li><b>Grow the most to win.</b> It all runs live against one clock, with no bots: only people.</li>
+        </ol>
+        <p class="small muted" style="margin-top:14px">Both games share one room. You can switch between them in the lobby.</p>
       </div>
     </section>
 
