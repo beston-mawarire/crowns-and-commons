@@ -1,14 +1,18 @@
-# Crowns & Commons
+# Silent Fleet, and Trade and Treachery
 
-A small multiplayer election game for the browser. Two to five parties share one medieval
-continent, cut into one region each. Write the laws, court the people, win half of your own
-region, then win the country. No combat, no game engine, no accounts: send friends a link.
+Two small multiplayer games for the browser, for friends with a link. No accounts, no game
+engine, no bots.
 
-The full rules, and every design decision behind them, are in [docs/DESIGN.md](docs/DESIGN.md).
+- **Silent Fleet**: two to eight captains on a big hidden map. You see only your own ship.
+  Find the others with radar, fire blind, make alliances and break them. The last ship afloat
+  wins. Rules: [docs/NAVAL.md](docs/NAVAL.md).
+- **Trade and Treachery**: three to five countries and one live market, about unequal starts,
+  shares and broken promises. Rules: [docs/TRADE.md](docs/TRADE.md).
 
-The same room can also play a second game, **Trade and Treachery**: a live trading game for
-three to five people about unequal starts, raw materials and broken promises. Its rules are in
-[docs/TRADE.md](docs/TRADE.md).
+Each room plays the game it was opened for, chosen with the tabs on the front page.
+
+(The repository is still called `crowns-and-commons`, after the election game that Silent
+Fleet replaced. That game is in the git history.)
 
 ## Play it locally
 
@@ -17,18 +21,15 @@ npm install
 npm run dev          # http://127.0.0.1:8787
 ```
 
-Open the page, press **Open a new room**, and either send the link to friends or press
-**Add a bot party** to fill seats and play alone. For quick testing, set *Length of each count*
-to one minute in the lobby; during a count, **Hasten the count** skips to the result.
+Open the page, pick a game, press **Open a new room**, and open the link in more browser
+windows (private windows count as different players).
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Runs the game locally with Wrangler (Worker, Durable Object and static files). |
-| `npm test` | Unit tests for the catalogue, the rules, the election model and a whole match. |
-| `npm run e2e` | Plays a full match over real WebSockets against a running server (start `npm run dev` first). |
-| `npm run calibrate` | Monte Carlo report on difficulty. Add `-- --tune` to search for a new `q0`. |
+| `npm run dev` | Runs the games locally with Wrangler (Worker, Durable Object and static files). |
+| `npm test` | Unit tests for the rules of both games. |
 | `npm run typecheck` | TypeScript check. |
 | `npm run deploy` | Deploys to Cloudflare by hand (needs `wrangler login`). |
 
@@ -45,45 +46,32 @@ the `GameRoom` Durable Object from the migration in `wrangler.jsonc`.
 
 Open pages keep themselves up to date. When a new version is deployed, every open page
 notices (on reconnecting, when it comes back to the front, and every two minutes) and reloads
-itself; matches carry on, because the state lives in the room and each seat is remembered.
+itself; games carry on, because the state lives in the room and each seat is remembered.
 Pages also reconnect on their own after a phone sleeps or the network drops.
 
 ## How it is put together
 
 ```
 public/            the page: plain HTML, CSS and JavaScript modules, no build step
-  js/app.js        draws whatever the server says is visible
-  js/map.js        the hex map and the "ink spreading" paint
+  js/app.js        the front page, the connection and the lobby
+  js/naval.js      the Silent Fleet screen
+  js/trade.js      the Trade and Treachery screen
 src/worker.ts      routes /api/rooms and /ws/CODE; everything else is a static file
 src/room.ts        the Durable Object: WebSockets, storage, one alarm as the room's clock
 src/game/
-  data.ts          rules, campaign actions, events, regions, and the hidden model constants
-  laws.ts          the catalogue: 116 laws, their hidden weights, downsides and contradictions
-  sim.ts           the election model (pure and seeded)
-  headlines.ts     the news ticker
-  rules.ts         what may be locked in, plus the clerk that fills gaps and plays bots
-  game.ts          the match as a state machine: lobby, planning, count (with half-time),
-                   results, coalition talks, final
-  trade.ts         the second mode, Trade and Treachery (browser side: public/js/trade.js)
+  game.ts          the room: players, lobby, and which game is running
+  naval.ts         the rules of Silent Fleet
+  trade.ts         the rules of Trade and Treachery
+  util.ts          seeded random numbers and the players' colours
 ```
 
-Two things keep it cheap and honest:
-
-- **The whole count is worked out the moment everyone locks in**, then released a slice at a
-  time by a Durable Object alarm (ten slices per count). Between slices the room is asleep.
-  At half-time it is worked out once more with the parties' moves, from the same seed.
-- **Hidden numbers never leave the server.** Browsers receive law names and promises only;
-  weights, satisfaction and other parties' plans stay behind until the rules reveal them.
+The rules are plain functions over plain objects, with no networking, so they are tested
+without a server. **Hidden information never leaves the server**: each browser is sent only
+what its player is allowed to see (in Silent Fleet, its own ship, its allies, and what its
+radar found).
 
 ## Tuning the balance
 
-All balance lives in data, not code:
-
-- `src/game/laws.ts`: each law's weights for the six groups (`w`, from -3 to +3), its delayed
-  downside (`d`) and its tags.
-- `src/game/data.ts` `MODEL`: how strongly platforms move voters, the pull of the Old Order
-  (`q0`), tax effects, campaign strengths, event odds.
-
-After changing either, run `npm run calibrate`. It reports how often different kinds of
-platform clear the qualifying bar (`RULES.qualifyShare`, now 30%), how big the Old Order is in
-the national round, and how often coalition talks happen.
+Every number that matters is at the top of the rules file for its game: `NAVAL` in
+`src/game/naval.ts` (action points, costs, ranges, the storm) and `TRADE` in
+`src/game/trade.ts`.

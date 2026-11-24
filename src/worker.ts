@@ -33,7 +33,7 @@ export default {
         const code = newCode();
         const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
         // A room is for one game or the other, decided when it is opened.
-        const game = url.searchParams.get("game") === "trade" ? "trade" : "election";
+        const game = url.searchParams.get("game") === "trade" ? "trade" : "naval";
         const made = await stub.fetch(`https://room/create?code=${code}&game=${game}`, { method: "POST" });
         if (made.ok) return Response.json({ code });
       }

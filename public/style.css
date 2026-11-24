@@ -1,4 +1,4 @@
-/* Crowns & Commons: ink on paper. The only colour on the page belongs to the parties. */
+/* Ink on paper. The only colour on the page belongs to the players and the sections. */
 :root {
   --paper: #faf8f2;
   --ink: #111;
@@ -225,7 +225,6 @@ table.grid td.top { font-weight: 700; background: var(--wash); }
 }
 
 /* ---- Trade and Treachery */
-body.trade-mode #mapwrap, body.trade-mode #legend, body.trade-mode #mapactions, body.trade-mode #newsbox, body.trade-mode #banner { display: none; }
 #tradeboard { max-width: 820px; margin: 0 auto; }
 .t-inv { display: flex; flex-wrap: wrap; gap: 6px; }
 .t-inv span { border: 1.5px solid var(--ink); padding: 3px 9px; font-size: 13.5px; }
@@ -256,7 +255,6 @@ body.trade-mode #mapwrap, body.trade-mode #legend, body.trade-mode #mapactions, 
 .gametabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
 .gametabs button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 #banner .gametabs { margin-bottom: 4px; }
-body.trade-lobby #mapwrap, body.trade-lobby #legend, body.trade-lobby [data-act="addBot"] { display: none; }
 .t-worth { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
 .t-worth .big { font: 700 30px var(--sans); }
 .spark { display: block; }
@@ -322,3 +320,58 @@ i.sq { display: inline-block; width: 10px; height: 10px; margin-right: 6px; back
 .t-scroll li.n-good { border-left: 5px solid var(--up); padding-left: 6px; background: #e9f5ec; }
 .t-scroll li.n-bad { border-left: 5px solid var(--down); padding-left: 6px; background: #fbeceb; }
 .t-scroll li.n-luck { border-left: 5px solid var(--faint); padding-left: 6px; }
+
+/* ---- the lobby */
+.lobby-link { text-align: center; margin: 18px auto; max-width: 520px; padding: 14px; border: 1px solid var(--ink); overflow-wrap: anywhere; }
+.countries { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 5px; }
+.countries button { font: 14px var(--serif); text-align: left; background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); padding: 5px 7px; cursor: pointer; border-radius: 0; }
+.countries button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.countries button:disabled { opacity: 0.3; cursor: not-allowed; text-decoration: line-through; }
+.countries .flag { font-size: 17px; }
+
+/* ---- Silent Fleet */
+#navalboard { max-width: 760px; margin: 0 auto; }
+.n-status { display: flex; flex-wrap: wrap; gap: 8px 26px; align-items: flex-end; margin-bottom: 8px; }
+.n-ap { display: flex; align-items: center; gap: 8px; }
+.n-ap b, #n-next { font: 700 24px var(--sans); }
+.n-pips { display: flex; gap: 3px; }
+.n-pips i { width: 11px; height: 16px; border: 1.5px solid var(--ink); display: block; }
+.n-pips i.on { background: var(--c-people, #0f6b66); }
+.n-pips.hull i { width: 26px; }
+.n-pips.hull i.on { background: var(--down, #b3261e); }
+.n-mapwrap { overflow-x: auto; padding-bottom: 4px; }
+.n-map { display: grid; grid-template-columns: 18px repeat(var(--n), minmax(13px, 1fr)); min-width: calc(18px + var(--n) * 13px); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.n-map .h { font: 600 9.5px var(--sans); color: var(--mid); display: grid; place-items: center; min-height: 14px; }
+.n-map .c { aspect-ratio: 1; background: #e3ebef; border: 0.5px solid #c3d0d8; display: grid; place-items: center; font: 700 clamp(8px, 1.5vw, 14px) var(--sans); font-style: normal; cursor: crosshair; overflow: hidden; line-height: 1; }
+.n-map .c.r { background: #d2dfe7; }
+.n-map .c.rr { background: #bfd3df; }
+.n-map .c.storm { background: repeating-linear-gradient(45deg, #5b6470 0 3px, #8a929c 3px 6px); }
+.n-map .c.ship { background: var(--s); color: #fff; border-color: var(--ink); }
+.n-map .c.ship.mine { box-shadow: inset 0 0 0 2px var(--ink); }
+.n-map .c.ghost { background: repeating-linear-gradient(45deg, var(--s) 0 3px, #e3ebef 3px 6px); border: 1px dashed var(--ink); }
+.n-map .c.wreck { background: repeating-linear-gradient(-45deg, var(--s) 0 2px, #fff 2px 6px); color: var(--ink); opacity: 0.75; }
+.n-map .c.m-hit { color: #fff; background: var(--down, #b3261e); }
+.n-map .c.ship.m-hit, .n-map .c.ghost.m-hit { box-shadow: inset 0 0 0 3px var(--down, #b3261e); }
+.n-map .c.m-miss { color: var(--mid); }
+.n-map .c.m-splash { color: var(--c-stocks, #1c4f91); }
+.n-map .c.tgt { outline: 3px solid var(--down, #b3261e); outline-offset: -3px; background: #f6d9d6; }
+.n-pad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0 6px; }
+.n-pad .btn { padding: 8px 4px; font-size: 14px; line-height: 1.15; }
+.n-pad .btn small { display: block; font: 400 11px var(--sans); opacity: 0.8; }
+.n-pad .n-radar, .n-pad .n-fire { grid-column: span 2; padding: 11px 4px; font-size: 16px; }
+.n-pad .n-radar:not(:disabled) { background: var(--c-stocks, #1c4f91); border-color: var(--c-stocks, #1c4f91); }
+.n-pad .n-fire:not(:disabled) { background: var(--down, #b3261e); border-color: var(--down, #b3261e); }
+.n-pad .n-radar:hover:not(:disabled), .n-pad .n-fire:hover:not(:disabled) { color: var(--paper); filter: brightness(1.15); }
+.n-legend { display: flex; flex-wrap: wrap; gap: 3px 14px; font-size: 12px; color: var(--mid); margin-bottom: 12px; }
+.n-legend .k { display: inline-block; width: 11px; height: 11px; margin-right: 4px; border: 1px solid var(--ink); vertical-align: -1px; }
+.n-legend .k.rr { background: #bfd3df; } .n-legend .k.r { background: #d2dfe7; }
+.n-legend .k.ghost { background: repeating-linear-gradient(45deg, #777 0 3px, #e3ebef 3px 6px); border-style: dashed; }
+.n-legend .k.storm { background: repeating-linear-gradient(45deg, #5b6470 0 3px, #8a929c 3px 6px); }
+.n-row { grid-template-columns: 100px 1fr; }
+.n-allytag { background: var(--c-deals, #6a3b8f); border-color: var(--c-deals, #6a3b8f); color: #fff; }
+.t-scroll li.n-sunk { border-left: 5px solid var(--ink); padding-left: 6px; font-weight: 700; }
+.t-scroll li.n-storm { border-left: 5px solid #5b6470; padding-left: 6px; font-weight: 600; }
+.t-scroll li.n-ally { border-left: 5px solid var(--c-deals, #6a3b8f); padding-left: 6px; }
+.t-scroll li.n-radar { border-left: 5px solid var(--c-stocks, #1c4f91); padding-left: 6px; }
+.t-card:not([data-sec]) > h3:first-child { cursor: default; }
+.t-card:not([data-sec]) > h3:first-child::before { content: none; }

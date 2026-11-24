@@ -1,11 +1,10 @@
 // One Durable Object per game room. It owns the room's state, talks to the players'
 // browsers over hibernatable WebSockets, and uses a single alarm as its clock, so it
-// costs nothing while everyone is thinking or while the votes are "coming in".
+// costs nothing while everyone is thinking.
 
 import { DurableObject } from "cloudflare:workers";
 import { byToken, createRoom, handle, join, nextAlarm, onAlarm, setConnected, view, welcome, type Store } from "./game/game";
 import type { Room } from "./game/game";
-import type { Timeline } from "./game/sim";
 import { versionOf, type Env } from "./worker";
 
 interface Attachment {
@@ -24,8 +23,7 @@ export class GameRoom extends DurableObject<Env> {
   private async load(): Promise<Store | null> {
     if (this.store === undefined) {
       const room = await this.ctx.storage.get<Room>("room");
-      const timeline = (await this.ctx.storage.get<Timeline>("timeline")) ?? null;
-      this.store = room ? { room, timeline } : null;
+      this.store = room ? { room } : null;
     }
     return this.store;
   }
@@ -33,8 +31,6 @@ export class GameRoom extends DurableObject<Env> {
   /** Persist, reset the clock, and tell everyone what they are allowed to know. */
   private async commit(store: Store) {
     await this.ctx.storage.put("room", store.room);
-    if (store.timeline) await this.ctx.storage.put("timeline", store.timeline);
-    else await this.ctx.storage.delete("timeline");
     const at = nextAlarm(store.room);
     if (at === null) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(Math.max(at, Date.now() + 20));
@@ -60,7 +56,7 @@ export class GameRoom extends DurableObject<Env> {
     if (url.pathname === "/create" && request.method === "POST") {
       if (await this.load()) return new Response("exists", { status: 409 });
       const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-      this.store = { room: createRoom(url.searchParams.get("code") ?? "", seed, Date.now(), url.searchParams.get("game") === "trade" ? "trade" : "election"), timeline: null };
+      this.store = { room: createRoom(url.searchParams.get("code") ?? "", seed, Date.now(), url.searchParams.get("game") === "trade" ? "trade" : "naval") };
       await this.commit(this.store);
       return new Response("ok");
     }
@@ -100,8 +96,6 @@ export class GameRoom extends DurableObject<Env> {
     if (error) fail(error);
     // A player who removed themselves from the lobby no longer has a seat.
     if (!store.room.players.some((p) => p.id === att.pid)) ws.serializeAttachment({} satisfies Attachment);
-    // Drafts are private and frequent: save them without waking every browser.
-    if (msg?.type === "draft") return void (await this.ctx.storage.put("room", store.room));
     return this.commit(store);
   }
 

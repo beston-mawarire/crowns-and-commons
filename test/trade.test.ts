@@ -6,7 +6,7 @@ let n = 0;
 const newId = () => `t${++n}`;
 
 function table(players = 3) {
-  const store: Store = { room: createRoom("TRADE", 777, 1000, "trade"), timeline: null };
+  const store: Store = { room: createRoom("TRADE", 777, 1000, "trade") };
   const ps: Player[] = [];
   for (let i = 0; i < players; i++) ps.push(join(store.room, newId, `Country ${"ABCDE"[i]}`) as Player);
   handle(store, ps[0].id, { type: "settings", tradeSec: 600 }, 1000, newId);
@@ -40,12 +40,11 @@ function runTo(store: Store, until: number) {
 const act = (store: Store, p: Player, msg: object, now: number) => handle(store, p.id, msg, now, newId);
 
 describe("Trade and Treachery", () => {
-  it("is for three or more people, with no bots", () => {
+  it("is for three to five people", () => {
     const two = table(2);
     expect(act(two.store, two.ps[0], { type: "start" }, 2000)).toMatch(/three players/);
-    const withBot = table(3);
-    act(withBot.store, withBot.ps[0], { type: "addBot" }, 1500);
-    expect(act(withBot.store, withBot.ps[0], { type: "start" }, 2000)).toMatch(/people only/);
+    const full = table(5);
+    expect(join(full.store.room, newId, "Sixth")).toMatch(/full/);
   });
 
   it("deals unequal starts without saying so", () => {
@@ -186,19 +185,20 @@ describe("Trade and Treachery: the host's two switches", () => {
 describe("the two games are separate", () => {
   it("fixes a room's game when it is opened: nothing in the lobby can change it", () => {
     const tradeRoom = table(3);
-    handle(tradeRoom.store, tradeRoom.ps[0].id, { type: "settings", mode: "election" }, 1500, newId);
-    handle(tradeRoom.store, tradeRoom.ps[1].id, { type: "settings", mode: "election" }, 1500, newId);
+    handle(tradeRoom.store, tradeRoom.ps[0].id, { type: "settings", mode: "naval" }, 1500, newId);
+    handle(tradeRoom.store, tradeRoom.ps[1].id, { type: "settings", mode: "naval" }, 1500, newId);
     expect(view(tradeRoom.store.room, tradeRoom.ps[0].id, 1600).mode).toBe("trade");
     handle(tradeRoom.store, tradeRoom.ps[0].id, { type: "start" }, 2000, newId);
     expect(tradeRoom.store.room.phase).toBe("trading");
     expect(view(tradeRoom.store.room, tradeRoom.ps[2].id, 2001).trade).not.toBeNull();
 
-    const store: Store = { room: createRoom("ELECT", 5, 1000), timeline: null };
+    const store: Store = { room: createRoom("NAVAL", 5, 1000) };
     const ps = [0, 1, 2].map((i) => join(store.room, newId, "P" + i) as Player);
     handle(store, ps[0].id, { type: "settings", mode: "trade" }, 1500, newId);
     handle(store, ps[0].id, { type: "start" }, 2000, newId);
-    expect(store.room.phase).toBe("planning");
-    expect(view(store.room, ps[0].id, 2001)).toMatchObject({ mode: "election", trade: null });
+    expect(store.room.phase).toBe("battle");
+    expect(view(store.room, ps[0].id, 2001)).toMatchObject({ mode: "naval", trade: null });
+    expect(view(store.room, ps[0].id, 2001).naval).not.toBeNull();
   });
 });
 
@@ -206,7 +206,7 @@ describe("Trade and Treachery: the wider economy", () => {
   it("deals different starts every game, with nobody able to do everything alone", () => {
     const seen = new Set<string>();
     for (let seed = 1; seed <= 12; seed++) {
-      const store: Store = { room: createRoom("VARY" + seed, seed * 31, 1000, "trade"), timeline: null };
+      const store: Store = { room: createRoom("VARY" + seed, seed * 31, 1000, "trade") };
       const ps = [0, 1, 2, 3].map((i) => join(store.room, newId, "C" + i) as Player);
       handle(store, ps[0].id, { type: "start" }, 2000 + seed, newId);
       const t = store.room.trade!;
@@ -296,7 +296,7 @@ describe("Trade and Treachery: the wider economy", () => {
     let odd = 0;
     let steps = 0;
     for (let seed = 1; seed <= 10; seed++) {
-      const s: Store = { room: createRoom("B" + seed, seed * 17, 1000, "trade"), timeline: null };
+      const s: Store = { room: createRoom("B" + seed, seed * 17, 1000, "trade") };
       const ps = [0, 1, 2].map((i) => join(s.room, newId, "C" + i) as Player);
       handle(s, ps[0].id, { type: "start" }, 2000, newId);
       const tr = s.room.trade!;
@@ -313,7 +313,7 @@ describe("Trade and Treachery: the wider economy", () => {
   it("picks a few world events for each game, and they move prices, shares and stores", () => {
     const kinds = new Set<string>();
     for (let seed = 1; seed <= 15; seed++) {
-      const s: Store = { room: createRoom("W" + seed, seed * 13, 1000, "trade"), timeline: null };
+      const s: Store = { room: createRoom("W" + seed, seed * 13, 1000, "trade") };
       const ps = [0, 1, 2].map((i) => join(s.room, newId, "C" + i) as Player);
       handle(s, ps[0].id, { type: "start" }, 2000 + seed, newId);
       const world = s.room.trade!.events.filter((e) => e.kind.startsWith("w:"));
@@ -405,7 +405,7 @@ describe("Share payouts and game length", () => {
   it("pays more each minute in a shorter game, so a share pays back about twice its price in every game", () => {
     const rates: number[] = [];
     for (const len of TRADE.lengths) {
-      const store: Store = { room: createRoom("LEN" + len, 7, 1000, "trade"), timeline: null };
+      const store: Store = { room: createRoom("LEN" + len, 7, 1000, "trade") };
       const ps = [0, 1, 2].map((i) => join(store.room, newId, "C" + i) as Player);
       handle(store, ps[0].id, { type: "settings", tradeSec: len }, 1500, newId);
       handle(store, ps[0].id, { type: "start" }, 2000, newId);
@@ -421,7 +421,7 @@ describe("Luck and losses", () => {
   it("gives each game good and bad luck for single countries, and every kind runs", () => {
     const kinds = new Set<string>();
     for (let seed = 1; seed <= 12; seed++) {
-      const s: Store = { room: createRoom("L" + seed, seed * 11, 1000, "trade"), timeline: null };
+      const s: Store = { room: createRoom("L" + seed, seed * 11, 1000, "trade") };
       const ps = [0, 1, 2, 3].map((i) => join(s.room, newId, "C" + i) as Player);
       handle(s, ps[0].id, { type: "start" }, 2000, newId);
       const luck = s.room.trade!.events.filter((e) => e.kind.startsWith("p:"));

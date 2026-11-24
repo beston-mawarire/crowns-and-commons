@@ -12,7 +12,7 @@
 //
 // Like game.ts, this file is plain functions over a plain object.
 
-import { mulberry32, shuffle, type Rng } from "./sim";
+import { mulberry32, shuffle, type Rng } from "./util";
 
 // ---------------------------------------------------------------- the economy
 
@@ -53,6 +53,7 @@ export const RECIPES: Record<string, { uses: Record<string, number>; needs: stri
 
 export const TRADE = {
   minPlayers: 3,
+  maxPlayers: 5,
   lengths: [600, 900, 1200],
   defaultLength: 900,
   batch: 5,
