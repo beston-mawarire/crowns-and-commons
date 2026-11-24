@@ -12,7 +12,8 @@ function battle(players = 3, seed = 42) {
   for (let i = 0; i < players; i++) ps.push(join(store.room, newId, `Captain ${i}`) as Player);
   expect(handle(store, ps[0].id, { type: "start" }, 2000, newId)).toBeNull();
   const t = store.room.naval!;
-  ps.forEach((p, i) => Object.assign(t.ships[p.id], { x: 4 + i * 4, y: 9, dir: 0 }));
+  // Most tests want full range, so that they are about one rule at a time.
+  ps.forEach((p, i) => Object.assign(t.ships[p.id], { x: 4 + i * 4, y: 9, dir: 0, guns: NAVAL.fireRange, radar: NAVAL.radarRange }));
   return { store, ps, t, a: ps[0], b: ps[1], c: ps[2] };
 }
 const act = (store: Store, p: Player, msg: object, now = 3000) => handle(store, p.id, msg, now, newId);
@@ -175,7 +176,7 @@ describe("Silent Fleet: alliances", () => {
     return made;
   };
 
-  it("shows allies each other's ships, live, and forbids firing on them", () => {
+  it("shows allies each other's ships, live, but does not stop them firing", () => {
     const { store, a, b, c } = allies();
     expect(see(store, a).ships.find((s) => s.id === b.id)).toMatchObject({ ally: true, cells: [[8, 10], [8, 9], [8, 8]], hull: 3 });
     expect(see(store, b).ships.find((s) => s.id === a.id)!.cells).toEqual([[4, 10], [4, 9], [4, 8]]);
@@ -183,8 +184,10 @@ describe("Silent Fleet: alliances", () => {
     expect(see(store, c).alliances).toHaveLength(0);
     act(store, b, { type: "n.move", dir: 1 });
     expect(see(store, a).ships.find((s) => s.id === b.id)!.cells![1]).toEqual([8, 8]);
-    expect(act(store, a, { type: "n.fire", x: 8, y: 8 })).toMatch(/cannot fire on .* while you are allies/);
     expect(see(store, a).alliances).toEqual([{ with: b.id, until: 4 }]);
+    expect(act(store, a, { type: "n.fire", x: 8, y: 8 })).toBeNull();
+    expect(see(store, b).me!.hull).toBe(2);
+    expect(see(store, a).alliances).toHaveLength(1); // the alliance itself still stands
   });
 
   it("ends after the agreed number of turns", () => {
@@ -309,5 +312,48 @@ describe("Silent Fleet: the host's settings", () => {
     expect(t.news.some((x) => /storm/i.test(x.text))).toBe(false);
     expect(see(store, ps[0], turns(40))).toMatchObject({ stormOn: false, stormNext: null, over: false });
     expect(store.room.phase).toBe("battle");
+  });
+});
+
+describe("Silent Fleet: range", () => {
+  const fresh = () => {
+    const made = battle();
+    for (const s of Object.values(made.t.ships)) Object.assign(s, { guns: NAVAL.rangeStart, radar: NAVAL.rangeStart, ap: 10 });
+    return made;
+  };
+
+  it("starts with guns and radar that reach only two squares from the ship", () => {
+    const store: Store = { room: createRoom("RANGE", 3, 1000) };
+    const ps = [0, 1].map(() => join(store.room, newId) as Player);
+    handle(store, ps[0].id, { type: "start" }, 2000, newId);
+    expect(see(store, ps[0]).me).toMatchObject({ guns: 2, radar: 2 });
+
+    const { store: s, t, a, b } = fresh(); // a lies on column 4, rows 8 to 10
+    expect(act(s, a, { type: "n.fire", x: 7, y: 9 })).toMatch(/out of range. Your guns reach 2 squares. Increase your range/);
+    expect(act(s, a, { type: "n.fire", x: 6, y: 9 })).toBeNull();
+    expect(act(s, a, { type: "n.fire", x: 4, y: 6 })).toBeNull(); // two squares beyond the bow: counted from the nearest part
+    expect(act(s, a, { type: "n.fire", x: 4, y: 5 })).toMatch(/out of range/);
+    act(s, a, { type: "n.ping" });
+    expect(see(s, a).me!.sightings).toHaveLength(0); // b is four squares away
+    Object.assign(t.ships[b.id], { x: 6, y: 12 }); // its bow is now two squares away, diagonally
+    act(s, a, { type: "n.ping" });
+    expect(see(s, a).me!.sightings.map((x) => x.id)).toEqual([b.id]);
+  });
+
+  it("buys more range a square at a time, up to the old ranges", () => {
+    const { store, t, a } = fresh();
+    expect(act(store, a, { type: "n.range" })).toBeNull();
+    expect(t.ships[a.id]).toMatchObject({ guns: 3, radar: 3, ap: 10 - NAVAL.cost.range });
+    expect(last(store, a)).toMatch(/guns now reach 3 squares and your radar 3/);
+    expect(act(store, a, { type: "n.fire", x: 7, y: 9 })).toBeNull();
+    for (let i = 0; i < 3; i++) {
+      t.ships[a.id].ap = 10;
+      expect(act(store, a, { type: "n.range" })).toBeNull();
+    }
+    expect(t.ships[a.id]).toMatchObject({ guns: NAVAL.fireRange, radar: NAVAL.radarRange });
+    expect(act(store, a, { type: "n.range" })).toMatch(/as far as they can/);
+    t.ships[a.id].ap = 2;
+    t.ships[a.id].guns = 2;
+    expect(act(store, a, { type: "n.range" })).toMatch(/costs 3 action points/);
   });
 });

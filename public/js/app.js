@@ -378,9 +378,10 @@ function navalLobby(host) {
       <li>You command one ship, three squares long, on a big map. You can see your own ship and nothing else.</li>
       <li>Every ${r.turnMs / 1000} seconds you get ${r.apPerTurn} action points (you can hold ${r.apMax}). Spend them whenever you like.</li>
       <li><b>Sail</b> one square forwards or backwards along your ship's length (${r.cost.move} point). <b>Turn</b> to switch between upright and sideways (${r.cost.turn} point).</li>
-      <li><b>Radar</b> (${r.cost.ping} points) shows every ship within ${r.radarRange} squares, as it is at that moment. Those ships are told someone has seen them.</li>
-      <li><b>Fire</b> (${r.cost.fire} points) at any square within ${r.fireRange} squares. You are told if you hit. ${r.hull} hits sink a ship.</li>
-      <li><b>Alliances:</b> two captains can agree to be allies for a number of turns. Allies see each other's ships and cannot fire on each other. Either can break it at any time.</li>
+      <li><b>Radar</b> (${r.cost.ping} points) shows every ship within reach, as it is at that moment. Those ships are told someone has seen them.</li>
+      <li><b>Fire</b> (${r.cost.fire} points) at any square within reach. You are told if you hit. ${r.hull} hits sink a ship.</li>
+      <li>Guns and radar start by reaching only ${r.rangeStart} squares from your ship. <b>Increase range</b> (${r.cost.range} points) adds a square to both, up to ${r.fireRange} for guns and ${r.radarRange} for radar.</li>
+      <li><b>Alliances:</b> two captains can agree to be allies for a number of turns. Allies see each other's ships. That is all: nothing stops an ally from firing on you. Either can break it at any time.</li>
       ${storm ? "<li>After a while a storm closes in from the edges, so stay away from them.</li>" : ""}
       <li>The last ship afloat wins.</li>
     </ol>`;

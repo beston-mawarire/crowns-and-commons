@@ -31,10 +31,15 @@ They can be spent at any moment, in any order.
 | --- | --- | --- |
 | Sail forwards or backwards | 1 | Moves one square along the ship's length. |
 | Turn left or right | 1 | Swings the ship a quarter turn about its middle square, so upright becomes sideways. |
-| Radar ping | 2 | Shows every ship with any part within 5 squares of your middle square. |
-| Fire | 2 | Fires at any square within 6 squares of your middle square. |
+| Radar ping | 2 | Shows every ship with any part inside your radar range. |
+| Fire | 2 | Fires at any square inside your gun range. |
+| Increase range | 3 | Adds one square to both your gun range and your radar range. |
 | Send points | the points sent | Gives action points to any other ship. |
 
+- **Range** is counted from the nearest part of your ship. Guns and radar both start at just
+  2 squares. Each increase adds one to both, up to 6 for guns and 5 for radar, so reaching
+  full range takes four increases (12 points). On the map, guns are a faint red wash and radar
+  is a blue line.
 - **Radar** shows where a ship is at that moment; the picture does not follow it, and is wiped
   after 6 turns. Every ship the radar touches is told so, and from roughly which direction
   (allies are not warned).
@@ -49,8 +54,8 @@ They can be spent at any moment, in any order.
 
 Any captain can offer another an alliance for 2, 4, 6 or 10 turns. If it is accepted:
 
-- each sees the other's ship, live;
-- neither can fire on the other.
+each sees the other's ship, live. That is all an alliance does: **allies can still fire on
+each other**, so it is only as good as the trust behind it.
 
 It ends when the turns run out, or the moment either captain breaks it; the other is told at
 once. Alliances are secret from everybody else. Once only two ships are left, all alliances

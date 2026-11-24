@@ -3,8 +3,8 @@
 // Every player commands one ship, three squares long. Nobody can see anybody else. Action
 // points arrive every thirty seconds and are spent on sailing, turning, radar and gunfire.
 // A radar ping shows who is near, and tells them they have been seen. Shots are fired blind
-// at any square within range. Alliances share positions and forbid attacks until they run
-// out or are broken. The last ship afloat wins.
+// at any square within range, and range can be bought. Alliances share positions until they
+// run out or are broken; they do not stop anyone firing. The last ship afloat wins.
 //
 // Like the trading game, this file is plain functions over a plain object, so every rule
 // can be tested without a server.
@@ -46,10 +46,14 @@ export const NAVAL = {
   apStart: 3,
   apPerTurn: 2,
   apMax: 10,
-  cost: { move: 1, turn: 1, ping: 2, fire: 2 },
+  cost: { move: 1, turn: 1, ping: 2, fire: 2, range: 3 },
   /** A ship sinks after this many hits. */
   hull: 3,
-  /** How far a shot can reach, and how far radar can see, counted in squares from the middle of the ship in any direction. */
+  /**
+   * How far guns and radar reach, counted in squares from the nearest part of the ship. Both
+   * start short; each "increase range" adds one square to both, up to these limits.
+   */
+  rangeStart: 2,
   fireRange: 6,
   radarRange: 5,
   /** A shell that misses is seen by any ship this close to where it lands. */
@@ -87,6 +91,9 @@ export interface Ship {
   hull: number;
   ap: number;
   alive: boolean;
+  /** How far this ship's guns and radar reach now. */
+  guns: number;
+  radar: number;
   /** Ships found by radar: where they were, and on which turn. */
   sightings: Record<string, { cells: number[][]; turn: number }>;
   /** Squares worth remembering: your hits and misses, and shells seen landing nearby. */
@@ -127,6 +134,8 @@ export const cellsOf = (s: { x: number; y: number; dir: number }): number[][] =>
 };
 /** A square's name, like F7. */
 export const coord = (x: number, y: number) => (x < 26 ? "" : "A") + String.fromCharCode(65 + (x % 26)) + (y + 1);
+/** How many squares from the nearest part of a ship to a square. */
+const reach = (cells: number[][], x: number, y: number) => Math.min(...cells.map(([cx, cy]) => Math.max(Math.abs(cx - x), Math.abs(cy - y))));
 const near = (cells: number[][], x: number, y: number, range: number) => cells.some(([cx, cy]) => Math.max(Math.abs(cx - x), Math.abs(cy - y)) <= range);
 const COMPASS = ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"];
 /** Roughly which way b lies from a. */
@@ -180,7 +189,7 @@ export function startNaval(players: Who[], seed: number, now: number, opts: { si
         if (placed.every((o) => Math.max(Math.abs(o.x - spot.x), Math.abs(o.y - spot.y)) >= gap)) best = spot;
       }
     }
-    const ship: Ship = { ...(best ?? { x: 3 + placed.length * 2, y: 3, dir: 0 }), hull: NAVAL.hull, ap: NAVAL.apStart, alive: true, sightings: {}, marks: [], shots: 0, hits: 0, pings: 0, sunkBy: null, sunkTurn: null, place: 1 };
+    const ship: Ship = { ...(best ?? { x: 3 + placed.length * 2, y: 3, dir: 0 }), hull: NAVAL.hull, ap: NAVAL.apStart, alive: true, guns: NAVAL.rangeStart, radar: NAVAL.rangeStart, sightings: {}, marks: [], shots: 0, hits: 0, pings: 0, sunkBy: null, sunkTurn: null, place: 1 };
     placed.push(ship);
     t.ships[p.id] = ship;
   }
@@ -313,11 +322,12 @@ export function navalHandle(t: NavalState, players: Who[], me: string, msg: any,
       if (short) return short;
       ship.ap -= NAVAL.cost.ping;
       ship.pings++;
+      const mine = cellsOf(ship);
       const found: string[] = [];
       for (const id of others) {
         const other = t.ships[id];
         const cells = cellsOf(other);
-        if (!near(cells, ship.x, ship.y, NAVAL.radarRange)) continue;
+        if (!cells.some(([x, y]) => reach(mine, x, y) <= ship.radar)) continue;
         ship.sightings[id] = { cells, turn: t.turn };
         found.push(id);
         if (!allied(t, me, id)) say(t, now, `Radar! Someone has just swept your position from the ${bearing(other, ship)}. They know where you are.`, id, "bad");
@@ -325,14 +335,23 @@ export function navalHandle(t: NavalState, players: Who[], me: string, msg: any,
       say(t, now, found.length ? `Radar: ${found.map(name).join(" and ")} found nearby.` : "Radar: nothing within range.", me, "radar");
       return null;
     }
+    case "n.range": {
+      if (ship.guns >= NAVAL.fireRange && ship.radar >= NAVAL.radarRange) return "Your guns and radar already reach as far as they can.";
+      const short = pay(NAVAL.cost.range);
+      if (short) return short;
+      ship.ap -= NAVAL.cost.range;
+      ship.guns = Math.min(NAVAL.fireRange, ship.guns + 1);
+      ship.radar = Math.min(NAVAL.radarRange, ship.radar + 1);
+      say(t, now, `Range increased: your guns now reach ${ship.guns} squares and your radar ${ship.radar}.`, me, "good");
+      return null;
+    }
     case "n.fire": {
       const x = Math.floor(Number(msg.x));
       const y = Math.floor(Number(msg.y));
       if (!(x >= 0 && y >= 0 && x < t.size && y < t.size)) return "Choose a square on the map.";
-      if (Math.max(Math.abs(x - ship.x), Math.abs(y - ship.y)) > NAVAL.fireRange) return `That is out of range. Your guns reach ${NAVAL.fireRange} squares.`;
+      if (reach(cellsOf(ship), x, y) > ship.guns) return `That is out of range. Your guns reach ${ship.guns} squares.${ship.guns < NAVAL.fireRange ? " Increase your range to reach further." : ""}`;
       if (cellsOf(ship).some(([cx, cy]) => cx === x && cy === y)) return "That is your own ship.";
       const target = others.find((id) => cellsOf(t.ships[id]).some(([cx, cy]) => cx === x && cy === y));
-      if (target && allied(t, me, target)) return `You cannot fire on ${name(target)} while you are allies. Break the alliance first.`;
       const short = pay(NAVAL.cost.fire);
       if (short) return short;
       ship.ap -= NAVAL.cost.fire;
@@ -389,7 +408,7 @@ export function navalHandle(t: NavalState, players: Who[], me: string, msg: any,
       t.proposals = t.proposals.filter((x) => !((x.from === p.from && x.to === me) || (x.from === me && x.to === p.from)));
       if (allied(t, me, p.from)) return null;
       t.alliances.push({ a: p.from, b: me, until: t.turn + p.turns });
-      for (const [a, b] of [[me, p.from], [p.from, me]]) say(t, now, `You and ${name(b)} are now allies for ${p.turns} turns. You can see each other's ships and cannot fire on each other.`, a, "ally");
+      for (const [a, b] of [[me, p.from], [p.from, me]]) say(t, now, `You and ${name(b)} are now allies for ${p.turns} turns. You can see each other's ships. Nothing stops either of you from firing.`, a, "ally");
       return null;
     }
     case "n.decline": {
@@ -403,7 +422,7 @@ export function navalHandle(t: NavalState, players: Who[], me: string, msg: any,
       if (!allied(t, me, msg.with)) return "You have no alliance with them.";
       t.alliances = t.alliances.filter((x) => !((x.a === me && x.b === msg.with) || (x.a === msg.with && x.b === me)));
       say(t, now, `You have broken your alliance with ${name(msg.with)}.`, me, "ally");
-      say(t, now, `${name(me)} has broken the alliance with you! You can no longer see their ship, and they can fire on you.`, msg.with, "bad");
+      say(t, now, `${name(me)} has broken the alliance with you! You can no longer see each other's ships.`, msg.with, "bad");
       return null;
     }
     case "n.chat": {
@@ -436,7 +455,7 @@ export function navalView(t: NavalState, me: string, now: number) {
     /** When the storm next moves in, if it will. */
     stormNext: t.stormOn === false || t.over || t.storm >= Math.floor((t.size - NAVAL.stormMinSafe) / 2) ? null : t.turn < NAVAL.stormStart ? NAVAL.stormStart : t.turn + NAVAL.stormEvery - ((t.turn - NAVAL.stormStart) % NAVAL.stormEvery),
     rules: NAVAL,
-    me: mine ? { x: mine.x, y: mine.y, dir: mine.dir, hull: mine.hull, ap: mine.ap, alive: mine.alive, cells: cellsOf(mine), marks: mine.marks, sightings: Object.entries(mine.sightings).map(([id, s]) => ({ id, ...s })) } : null,
+    me: mine ? { x: mine.x, y: mine.y, dir: mine.dir, hull: mine.hull, ap: mine.ap, alive: mine.alive, guns: mine.guns, radar: mine.radar, cells: cellsOf(mine), marks: mine.marks, sightings: Object.entries(mine.sightings).map(([id, s]) => ({ id, ...s })) } : null,
     ships: Object.entries(t.ships).map(([id, s]) => {
       const friend = id !== me && allied(t, me, id);
       const open = all || friend;

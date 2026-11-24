@@ -37,6 +37,8 @@ export function renderNaval(helpers) {
   update();
 }
 
+/** How many squares from the nearest part of my ship to a square. */
+const reach = (x, y) => Math.min(...N().me.cells.map(([cx, cy]) => Math.max(Math.abs(cx - x), Math.abs(cy - y))));
 const canAct = () => built && api && N() && !N().over && N().me?.alive;
 
 // ---------------------------------------------------------------- skeleton
@@ -53,11 +55,12 @@ function build() {
   el("left").innerHTML = `<h3>The fleets</h3><div id="n-fleets"></div>
     <h3>How it works</h3>
     <ul class="t-how">
-      <li>You see only your own ship. <b>Radar</b> shows ships within ${r.radarRange} squares, and warns them.</li>
+      <li>You see only your own ship. <b>Radar</b> shows ships inside the blue line, and warns them.</li>
       <li><b>Sail</b> forwards or backwards along your ship. <b>Turn</b> to switch between upright and sideways.</li>
-      <li><b>Fire</b> at any square within ${r.fireRange} squares. ${r.hull} hits sink a ship.</li>
+      <li><b>Fire</b> at any square in the red area. ${r.hull} hits sink a ship.</li>
+      <li>Both start at ${r.rangeStart} squares. <b>Increase range</b> to reach further (guns up to ${r.fireRange}, radar up to ${r.radarRange}).</li>
       <li>You get <b>${r.apPerTurn} action points every ${r.turnMs / 1000} seconds</b>, and can hold ${r.apMax}.</li>
-      <li><b>Allies</b> see each other and cannot fire on each other.</li>
+      <li><b>Allies</b> see each other's ships. They can still fire on each other.</li>
       ${N().stormOn ? "<li>Keep away from the edges: a <b>storm</b> closes in later.</li>" : "<li>There is <b>no storm</b> in this game.</li>"}
     </ul>
     <p class="small muted">Keyboard: arrow keys to sail and turn, R for radar, F or Enter to fire.</p>`;
@@ -74,7 +77,7 @@ function build() {
     <section class="t-card c-deals"><h3>Alliances</h3><div id="n-allies"></div>
       <div id="n-allyform"><div class="t-row n-row"><select id="n-ally-turns" aria-label="For how long">${r.allianceTurns.map((n) => `<option value="${n}" ${n === 4 ? "selected" : ""}>${n} turns</option>`).join("")}</select><select id="n-ally-to" aria-label="With whom">${pick()}</select></div>
       <button class="btn ghost wide" id="n-propose">Offer an alliance</button>
-      <p class="small muted">Allies see each other's ships and cannot fire on each other. Either side can break it at any time.</p></div></section>
+      <p class="small muted">Allies see each other's ships, and nothing more: an ally can still fire on you. Either side can break it at any time.</p></div></section>
     <section class="t-card c-talk"><h3>Talk</h3>
       <div id="n-chat" class="t-scroll"></div>
       <div class="t-say" id="n-say"><select id="n-chat-to" aria-label="Say to">${pick("Everyone")}</select><input id="n-chat-text" maxlength="200" placeholder="Say something…" aria-label="Message" /></div></section>
@@ -102,6 +105,7 @@ function build() {
       if (d.n === "move") api.send({ type: "n.move", dir: Number(d.dir) });
       if (d.n === "turn") api.send({ type: "n.turn", dir: Number(d.dir) });
       if (d.n === "ping") api.send({ type: "n.ping" });
+      if (d.n === "range") api.send({ type: "n.range" });
       if (d.n === "fire") fire();
       if (d.n === "accept") api.send({ type: "n.accept", id: Number(d.id) });
       if (d.n === "decline") api.send({ type: "n.decline", id: Number(d.id) });
@@ -114,7 +118,7 @@ function aim(x, y) {
   if (!canAct()) return;
   const me = N().me;
   if (me.cells.some(([cx, cy]) => cx === x && cy === y)) return void (target = null), update();
-  if (Math.max(Math.abs(x - me.x), Math.abs(y - me.y)) > N().rules.fireRange) return api.toast(`Out of range. Your guns reach ${N().rules.fireRange} squares.`);
+  if (reach(x, y) > me.guns) return api.toast(`Out of range. Your guns reach ${plural(me.guns, "square")}.${me.guns < N().rules.fireRange ? " Increase your range to reach further." : ""}`);
   target = target && target.x === x && target.y === y ? null : { x, y };
   update();
 }
@@ -146,7 +150,7 @@ function update() {
   const me = t.me;
   const alive = !!me?.alive && !t.over;
   const allyOf = Object.fromEntries(t.alliances.map((a) => [a.with, a.until]));
-  if (target && (!alive || Math.max(Math.abs(target.x - me.x), Math.abs(target.y - me.y)) > r.fireRange)) target = null;
+  if (target && (!alive || reach(target.x, target.y) > me.guns)) target = null;
 
   // ---- fleets
   setHTML(
@@ -199,13 +203,16 @@ function update() {
   if (me && (me.alive || t.over)) me.cells.forEach(([x, y], i) => put(x, y, { cls: me.alive ? "ship mine" : "wreck", bg: color(meId), text: i === 2 && me.alive ? ARROW[me.dir] : i === 1 ? flag(meId) : "", title: "Your ship" }));
   for (const m of me?.marks ?? []) put(m.x, m.y, { mark: m.kind, title: { hit: "You hit a ship here", miss: "Your shot missed here", splash: "A shell landed here" }[m.kind] });
 
+  const box = me ? { x0: Math.min(...me.cells.map((c) => c[0])), x1: Math.max(...me.cells.map((c) => c[0])), y0: Math.min(...me.cells.map((c) => c[1])), y1: Math.max(...me.cells.map((c) => c[1])) } : null;
   let map = `<span class="h"></span>` + Array.from({ length: size }, (_, x) => `<span class="h">${col(x)}</span>`).join("");
   for (let y = 0; y < size; y++) {
     map += `<span class="h">${y + 1}</span>`;
     for (let x = 0; x < size; x++) {
       const g = grid[x + "," + y] ?? {};
-      const d = alive ? Math.max(Math.abs(x - me.x), Math.abs(y - me.y)) : 99;
-      const cls = ["c", g.cls, d <= r.radarRange ? "rr" : d <= r.fireRange ? "r" : "", x < t.storm || y < t.storm || x >= size - t.storm || y >= size - t.storm ? "storm" : "", g.mark ? "m-" + g.mark : "", target && target.x === x && target.y === y ? "tgt" : ""].filter(Boolean).join(" ");
+      const d = alive ? reach(x, y) : 99;
+      // Guns: a see-through red wash. Radar: a blue line round the edge of what it can see.
+      const edge = d === me?.radar ? [y === box.y0 - d ? "et" : "", y === box.y1 + d ? "eb" : "", x === box.x0 - d ? "el" : "", x === box.x1 + d ? "er" : ""].join(" ") : "";
+      const cls = ["c", g.cls, d <= (me?.guns ?? 0) ? "g" : "", edge, x < t.storm || y < t.storm || x >= size - t.storm || y >= size - t.storm ? "storm" : "", g.mark ? "m-" + g.mark : "", target && target.x === x && target.y === y ? "tgt" : ""].filter(Boolean).join(" ");
       const mark = g.mark === "hit" ? "✕" : g.mark === "miss" ? "•" : g.mark === "splash" ? "≈" : "";
       map += `<i class="${cls}" data-x="${x}" data-y="${y}"${g.bg ? ` style="--s:${g.bg}"` : ""}${g.title ? ` title="${esc(g.title)}"` : ""}>${mark || g.text || ""}</i>`;
     }
@@ -224,6 +231,7 @@ function update() {
         <button class="btn" data-n="turn" data-dir="1" ${can(r.cost.turn)}>↻ Turn right<small>${r.cost.turn} point</small></button>
         <button class="btn n-radar" data-n="ping" ${can(r.cost.ping)}>◎ Radar ping<small>${r.cost.ping} points</small></button>
         <button class="btn n-fire" data-n="fire" ${target ? can(r.cost.fire) : "disabled"}>${target ? `✸ Fire at ${coord(target.x, target.y)}` : "✸ Fire"}<small>${target ? `${r.cost.fire} points` : "tap a square to aim"}</small></button>
+        ${me.guns >= r.fireRange && me.radar >= r.radarRange ? `<p class="n-range small muted">Guns reach ${me.guns} squares and radar ${me.radar}: as far as they can go.</p>` : `<button class="btn ghost n-range" data-n="range" ${can(r.cost.range)}>⤢ Increase range<small>guns ${me.guns} → ${Math.min(r.fireRange, me.guns + 1)}, radar ${me.radar} → ${Math.min(r.radarRange, me.radar + 1)} · ${r.cost.range} points</small></button>`}
       </div>`,
     );
   } else setHTML("n-controls", "");
@@ -231,7 +239,7 @@ function update() {
   setHTML(
     "n-legend",
     alive
-      ? `<span><i class="k rr"></i>radar reaches here</span><span><i class="k r"></i>guns reach here</span><span><i class="k ghost"></i>seen by radar (may have moved)</span><span><b>✕</b> your hit</span><span><b>•</b> your miss</span><span><b>≈</b> a shell landed</span>${t.storm ? `<span><i class="k storm"></i>storm</span>` : ""}`
+      ? `<span><i class="k g"></i>guns reach here (${me.guns})</span><span><i class="k rr"></i>radar sees inside this line (${me.radar})</span><span><i class="k ghost"></i>seen by radar (may have moved)</span><span><b>✕</b> your hit</span><span><b>•</b> your miss</span><span><b>≈</b> a shell landed</span>${t.storm ? `<span><i class="k storm"></i>storm</span>` : ""}`
       : "",
   );
 
