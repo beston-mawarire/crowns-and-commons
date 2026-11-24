@@ -215,7 +215,7 @@ function update() {
   setHTML(
     "n-offer",
     offer
-      ? `<div class="n-pop" role="dialog" aria-label="Alliance offer"><p class="n-pop-flag">${flag(offer.from)}</p><h2>${esc(nation(offer.from))} offers you an alliance</h2><p>From ${esc(player(offer.from)?.name)}. You would see each other's ships until one of you breaks it. You could still fire on each other.</p><div class="n-pop-buttons"><button class="btn big" data-n="accept" data-id="${offer.id}">Accept</button><button class="btn ghost big" data-n="decline" data-id="${offer.id}">Decline</button></div></div>`
+      ? `<div class="n-pop" role="dialog" aria-label="Alliance offer"><p class="n-pop-flag">${flag(offer.from)}</p><h2>${esc(nation(offer.from))} offers you an alliance</h2><p>From ${esc(player(offer.from)?.name)}. You would see each other's ships.</p><div class="n-pop-buttons"><button class="btn big" data-n="accept" data-id="${offer.id}">Accept</button><button class="btn ghost big" data-n="decline" data-id="${offer.id}">Decline</button></div></div>`
       : "",
   );
   el("n-offer").hidden = !offer;

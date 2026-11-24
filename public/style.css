@@ -386,11 +386,13 @@ i.sq { display: inline-block; width: 10px; height: 10px; margin-right: 6px; back
 .n-legend .k.dmg { background: #5a1a15; }
 
 /* Silent Fleet: the alliance pop-up, and on phones the quick buttons and pull-up sheets */
-#n-offer { position: fixed; inset: 0; z-index: 35; background: rgba(17, 17, 17, 0.55); display: grid; place-items: center; padding: 16px; }
-.n-pop { background: var(--paper); border: 3px double var(--ink); border-top: 8px solid var(--c-deals, #6a3b8f); padding: 20px 22px; max-width: 420px; width: 100%; text-align: center; }
-.n-pop h2 { font-size: 22px; margin-bottom: 8px; }
-.n-pop-flag { font-size: 44px; line-height: 1; margin-bottom: 6px; }
-.n-pop-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+#n-offer { position: fixed; top: 10px; right: 10px; z-index: 35; width: min(300px, calc(100vw - 20px)); }
+.n-pop { background: var(--paper); border: 2px solid var(--ink); border-top: 7px solid var(--c-deals, #6a3b8f); padding: 10px 12px 12px; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.3); animation: rise 0.3s ease-out; }
+.n-pop h2 { font-size: 16px; margin-bottom: 4px; }
+.n-pop p { font-size: 13px; margin: 0; }
+.n-pop-flag { font-size: 26px; line-height: 1; float: left; margin: 0 8px 0 0; }
+.n-pop-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; clear: both; }
+.n-pop-buttons .btn { font-size: 15px; padding: 7px 8px; }
 .n-pop-buttons .btn:first-child { background: var(--up, #1a7a35); border-color: var(--up, #1a7a35); }
 #n-quick, .n-close, #n-backdrop { display: none; }
 .n-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; background: var(--down, #b3261e); color: #fff; font: 700 12px/18px var(--sans); }
