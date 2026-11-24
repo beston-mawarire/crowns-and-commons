@@ -89,7 +89,7 @@ function build() {
     <section class="t-card c-deals" id="n-sec-ally"><h3>Alliances <button class="n-close" data-n="close" aria-label="Close">✕</button></h3><div id="n-allies"></div>
       <div id="n-allyform"><div class="field"><select id="n-ally-to" aria-label="With whom">${pick()}</select></div>
       <button class="btn ghost wide" id="n-propose">Offer an alliance</button>
-      <p class="small muted">Allies see each other's ships, and nothing more: an ally can still fire on you. It lasts until one of you breaks it.</p></div></section>
+      <p class="small muted">Allies see each other's ships, and nothing more: an ally can still fire on you. You can have as many allies as you like. Each lasts until one of you breaks it.</p></div></section>
     <section class="t-card c-talk" id="n-sec-talk"><h3>Talk <button class="n-close" data-n="close" aria-label="Close">✕</button></h3>
       <div id="n-chat" class="t-scroll"></div>
       <div class="t-say" id="n-say"><select id="n-chat-to" aria-label="Say to">${pick("Everyone")}</select><input id="n-chat-text" maxlength="200" placeholder="Say something…" aria-label="Message" /></div></section>
@@ -242,7 +242,7 @@ function update() {
   if (t.over) banner = `<div class="t-banner"><h2>${t.winner ? `${full(t.winner)} wins` : "Nobody wins"}</h2><p>${t.winner ? `${esc(player(t.winner)?.name)} commands the last ship afloat, after ${plural(t.turn, "turn")}.` : "Every ship went down."}</p></div>`;
   else if (me && !me.alive) {
     const mine = t.ships.find((x) => x.id === meId);
-    banner = `<p class="t-flag bad"><b>Your ship has been sunk${mine.sunkBy ? ` by ${esc(nation(mine.sunkBy))}` : " by the storm"}.</b> You can watch the rest of the battle, and you can now see every ship.</p>`;
+    banner = `<p class="t-flag bad"><b>Your ship has been sunk${mine.sunkBy ? ` by ${esc(nation(mine.sunkBy))}` : " by the storm"}.</b> You cannot see the other ships. The whole map is shown to everyone when the battle ends.</p>`;
   }
   setHTML("n-banner", banner);
 
@@ -269,7 +269,7 @@ function update() {
   for (const s of t.ships) if (s.cells) s.cells.forEach(([x, y], i) => put(x, y, { cls: "ship" + (s.damaged?.includes(i) ? " dmg" : ""), bg: color(s.id), text: i === 1 ? flag(s.id) : i === 2 && s.dir !== null ? ARROW[s.dir] : "", title: `${nation(s.id)}${s.ally ? " (your ally)" : ""}` }));
   for (const row of t.result?.rows ?? []) if (row.place > 1) row.cells.forEach(([x, y], i) => put(x, y, { cls: "wreck", bg: color(row.id), text: i === 1 ? flag(row.id) : "", title: `${nation(row.id)} went down here` }));
   for (const row of t.result?.rows ?? []) if (row.place === 1 && row.id !== meId) row.cells.forEach(([x, y], i) => put(x, y, { cls: "ship", bg: color(row.id), text: i === 1 ? flag(row.id) : "", title: nation(row.id) }));
-  if (me && (me.alive || t.over)) me.cells.forEach(([x, y], i) => put(x, y, { cls: (me.alive ? "ship mine" : "wreck") + (me.alive && me.damaged.includes(i) ? " dmg" : ""), bg: color(meId), text: i === 2 && me.alive ? ARROW[me.dir] : i === 1 ? flag(meId) : "", title: me.damaged.includes(i) ? "Your ship: this part has been hit" : "Your ship" }));
+  if (me) me.cells.forEach(([x, y], i) => put(x, y, { cls: (me.alive ? "ship mine" : "wreck") + (me.alive && me.damaged.includes(i) ? " dmg" : ""), bg: color(meId), text: i === 2 && me.alive ? ARROW[me.dir] : i === 1 ? flag(meId) : "", title: !me.alive ? "Your ship went down here" : me.damaged.includes(i) ? "Your ship: this part has been hit" : "Your ship" }));
   for (const m of me?.marks ?? []) put(m.x, m.y, { mark: m.kind, title: { hit: "You hit a ship here", miss: "Your shot missed here", splash: "A shell landed here" }[m.kind] });
 
   const box = me ? { x0: Math.min(...me.cells.map((c) => c[0])), x1: Math.max(...me.cells.map((c) => c[0])), y0: Math.min(...me.cells.map((c) => c[1])), y1: Math.max(...me.cells.map((c) => c[1])) } : null;
@@ -322,7 +322,7 @@ function update() {
       mineOut.map((p) => `<div class="t-offer"><i class="dot" style="background:${color(p.to)}"></i><div>You have offered <b>${full(p.to)}</b> an alliance.</div><button class="btn ghost small" data-n="decline" data-id="${p.id}">Withdraw</button></div>`).join("") ||
       `<p class="small muted">${t.over ? "The battle is over." : "You have no allies."}</p>`,
   );
-  el("n-allyform").hidden = !alive || t.ships.filter((s) => s.alive).length <= 2;
+  el("n-allyform").hidden = !alive;
   el("n-givebox").hidden = !alive;
   el("n-say").hidden = !alive;
 

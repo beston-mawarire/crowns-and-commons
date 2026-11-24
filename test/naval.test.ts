@@ -141,7 +141,8 @@ describe("Silent Fleet: radar and guns", () => {
     expect(t.ships[a.id].ap).toBe(NAVAL.sinkBonus);
     expect(see(store, a).news.at(-1)!.text).toMatch(/has been sunk by/);
     expect(act(store, b, { type: "n.ping" })).toMatch(/only watch/);
-    expect(see(store, b).ships.filter((s) => s.cells)).toHaveLength(2); // the sunk captain watches the whole sea
+    expect(see(store, b).ships.filter((s) => s.cells)).toHaveLength(0); // a sunk captain is shown no ships
+    expect(see(store, b).me).toMatchObject({ alive: false, sightings: [] });
   });
 
   it("lets a ship near a miss see the shell land", () => {
@@ -219,7 +220,7 @@ describe("Silent Fleet: alliances", () => {
     expect(t.ships[b.id].hull).toBe(2);
   });
 
-  it("can be turned down, and cannot exist once only two ships are left", () => {
+  it("can be turned down, can be made with everyone at once, and survives down to the last two ships", () => {
     const { store, t, a, b, c } = battle();
     act(store, a, { type: "n.propose", to: b.id });
     act(store, b, { type: "n.decline", id: t.proposals[0].id });
@@ -233,9 +234,8 @@ describe("Silent Fleet: alliances", () => {
     Object.assign(t.ships[a.id], { x: 8, y: 13 }); // within reach of c at 12,9
     act(store, a, { type: "n.fire", x: 12, y: 9 });
     expect(t.ships[c.id].alive).toBe(false);
-    expect(t.alliances).toHaveLength(0);
-    expect(see(store, b).news.at(-1)!.text).toMatch(/Only two ships are left/);
-    expect(act(store, a, { type: "n.propose", to: b.id })).toMatch(/Only two ships/);
+    expect(t.alliances).toEqual([{ a: a.id, b: b.id }]); // still allies, with only the two of them left
+    expect(see(store, a).ships.find((s) => s.id === b.id)!.cells).not.toBeNull();
   });
 });
 
@@ -384,5 +384,23 @@ describe("Silent Fleet: partial radar", () => {
     act(store, a, { type: "n.ping" });
     expect(see(store, a).me!.sightings[0].cells).toHaveLength(3);
     expect(JSON.stringify(see(store, a).ships)).not.toContain("[8,9]"); // nothing else gives the rest away
+  });
+});
+
+describe("Silent Fleet: many alliances", () => {
+  it("lets one captain be allied with every other captain, and two captains ally in a two-player game", () => {
+    const { store, t, ps } = battle(4);
+    for (const p of ps.slice(1)) {
+      expect(act(store, ps[0], { type: "n.propose", to: p.id })).toBeNull();
+      expect(act(store, p, { type: "n.accept", id: t.proposals.find((x) => x.to === p.id)!.id })).toBeNull();
+    }
+    expect(see(store, ps[0]).alliances).toHaveLength(3);
+    expect(see(store, ps[0]).ships.filter((s) => s.cells)).toHaveLength(3);
+    expect(see(store, ps[1]).ships.filter((s) => s.cells)).toHaveLength(1); // allies of my ally are not my allies
+
+    const two = battle(2);
+    expect(act(two.store, two.a, { type: "n.propose", to: two.b.id })).toBeNull();
+    expect(act(two.store, two.b, { type: "n.accept", id: two.t.proposals[0].id })).toBeNull();
+    expect(see(two.store, two.b).alliances).toEqual([{ with: two.a.id }]);
   });
 });

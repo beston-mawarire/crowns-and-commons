@@ -381,7 +381,7 @@ function navalLobby(host) {
       <li><b>Radar</b> (${r.cost.ping} points) shows whatever parts of other ships are within reach, as they are at that moment. Those ships are told someone has seen them.</li>
       <li><b>Fire</b> (${r.cost.fire} points) at any square within reach. You are told if you hit. ${r.hull} hits sink a ship.</li>
       <li>Guns and radar start by reaching only ${r.rangeStart} squares from your ship. <b>Increase range</b> (${r.cost.range} points) adds a square to both, up to ${r.fireRange} for guns and ${r.radarRange} for radar.</li>
-      <li><b>Alliances:</b> two captains can agree to be allies. Allies see each other's ships. That is all: nothing stops an ally from firing on you. It lasts until one of them breaks it.</li>
+      <li><b>Alliances:</b> two captains can agree to be allies. Allies see each other's ships. That is all: nothing stops an ally from firing on you. You can have as many allies as you like, and each alliance lasts until one side breaks it.</li>
       ${storm ? "<li>After a while a storm closes in from the edges, so stay away from them.</li>" : ""}
       <li>The last ship afloat wins.</li>
     </ol>`;

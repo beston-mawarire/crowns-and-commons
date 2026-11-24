@@ -60,9 +60,9 @@ to accept or decline on the spot. If it is accepted, each sees the other's ship,
 is all an alliance does: **allies can still fire on each other**, so it is only as good as
 the trust behind it.
 
-There is no time limit. An alliance lasts until either captain breaks it (the other is told
-at once), one of the two ships sinks, or only two ships are left, when all alliances end and
-no more can be made. Alliances are secret from everybody else.
+There is no time limit, and a captain can be allied with any number of others at once, even
+when only two ships are left. An alliance lasts until either captain breaks it (the other is
+told at once) or one of the two ships sinks. Alliances are secret from everybody else.
 
 ## On a phone
 
@@ -83,8 +83,8 @@ part in the storm takes one damage each turn.
 
 ## Sunk captains
 
-A sunk captain sees the whole map and every ship for the rest of the battle, but can no
-longer send messages. When the battle ends everyone sees the final map, and a table of
+A sunk captain sees no ships for the rest of the battle (only where their own went down), and
+can no longer send messages, so they have nothing to pass on. When the battle ends everyone sees the final map, and a table of
 shots, hits, radar pings and who sank whom.
 
 ## Not yet tested with real players

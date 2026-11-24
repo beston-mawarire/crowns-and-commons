@@ -119,7 +119,7 @@ export interface NavalState {
   stormOn?: boolean;
   storm: number;
   ships: Record<string, Ship>;
-  /** An alliance lasts until one side breaks it, a ship sinks, or only two ships are left. */
+  /** An alliance lasts until one side breaks it or one of the two ships sinks. A captain may have any number. */
   alliances: { a: string; b: string }[];
   proposals: { id: number; from: string; to: string }[];
   news: { id: number; t: number; text: string; to: string | null; kind?: string }[];
@@ -211,6 +211,7 @@ function sink(t: NavalState, id: string, by: string | null, now: number, name: (
   t.alliances = t.alliances.filter((x) => x.a !== id && x.b !== id);
   t.proposals = t.proposals.filter((x) => x.from !== id && x.to !== id);
   for (const other of Object.values(t.ships)) delete other.sightings[id];
+  ship.sightings = {};
   say(t, now, by ? `${name(id)} has been sunk by ${name(by)}!` : `${name(id)} has gone down in the storm!`, null, "sunk");
   if (by && t.ships[by].alive) t.ships[by].ap = Math.min(NAVAL.apMax, t.ships[by].ap + NAVAL.sinkBonus);
 }
@@ -224,10 +225,6 @@ function checkEnd(t: NavalState, now: number, name: (id: string) => string) {
     t.alliances = [];
     t.proposals = [];
     say(t, now, t.winner ? `${name(t.winner)} is the last ship afloat, and wins!` : "Every ship has gone down. Nobody wins.", null, "sunk");
-  } else if (left.length === 2 && (t.alliances.length || t.proposals.length)) {
-    t.alliances = [];
-    t.proposals = [];
-    say(t, now, "Only two ships are left. All alliances are over: there can be only one winner.");
   }
 }
 
@@ -394,7 +391,6 @@ export function navalHandle(t: NavalState, players: Who[], me: string, msg: any,
     }
     case "n.propose": {
       if (!others.includes(msg.to)) return "Choose a ship that is still afloat.";
-      if (others.length < 2) return "Only two ships are left. There can be no alliance now.";
       if (allied(t, me, msg.to)) return `You are already allied with ${name(msg.to)}.`;
       t.proposals = t.proposals.filter((p) => !(p.from === me && p.to === msg.to));
       t.proposals.push({ id: t.nextId++, from: me, to: msg.to });
@@ -441,8 +437,9 @@ export function navalHandle(t: NavalState, players: Who[], me: string, msg: any,
 
 export function navalView(t: NavalState, me: string, now: number) {
   const mine = t.ships[me];
-  // A sunk captain, and everyone once the battle is over, sees the whole sea.
-  const all = t.over || (mine && !mine.alive);
+  // Only once the battle is over is the whole sea shown. A sunk captain sees no ships at all,
+  // so there is nothing to pass on to anyone still playing.
+  const all = t.over;
   return {
     size: t.size,
     turn: t.turn,
