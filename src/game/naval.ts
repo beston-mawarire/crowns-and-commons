@@ -43,7 +43,7 @@ export const NAVAL = {
   maxPlayers: 8,
   /** A turn: action points arrive this often. */
   turnMs: 30_000,
-  apStart: 3,
+  apStart: 2,
   apPerTurn: 2,
   apMax: 10,
   cost: { move: 1, turn: 1, ping: 2, fire: 2, range: 3 },

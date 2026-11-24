@@ -65,8 +65,9 @@ describe("Silent Fleet: setting up", () => {
 describe("Silent Fleet: sailing", () => {
   it("moves forwards and backwards along the ship's length, for one point each", () => {
     const { store, t, a } = battle();
+    t.ships[a.id].ap = 3;
     expect(act(store, a, { type: "n.move", dir: 1 })).toBeNull();
-    expect(t.ships[a.id]).toMatchObject({ x: 4, y: 8, ap: NAVAL.apStart - 1 });
+    expect(t.ships[a.id]).toMatchObject({ x: 4, y: 8, ap: 2 });
     act(store, a, { type: "n.move", dir: -1 });
     act(store, a, { type: "n.move", dir: -1 });
     expect(t.ships[a.id]).toMatchObject({ x: 4, y: 10, ap: 0 });
@@ -75,6 +76,7 @@ describe("Silent Fleet: sailing", () => {
 
   it("turns on its middle square, between upright and sideways", () => {
     const { store, t, a } = battle();
+    t.ships[a.id].ap = 3;
     act(store, a, { type: "n.turn", dir: 1 });
     expect(t.ships[a.id].dir).toBe(1);
     expect(cellsOf(t.ships[a.id])).toEqual([[3, 9], [4, 9], [5, 9]]);
@@ -160,8 +162,8 @@ describe("Silent Fleet: action points", () => {
 
   it("lets a captain send points to another ship", () => {
     const { store, t, a, b } = battle();
-    expect(act(store, a, { type: "n.give", to: b.id, n: 2 })).toBeNull();
-    expect([t.ships[a.id].ap, t.ships[b.id].ap]).toEqual([1, 5]);
+    expect(act(store, a, { type: "n.give", to: b.id, n: 1 })).toBeNull();
+    expect([t.ships[a.id].ap, t.ships[b.id].ap]).toEqual([1, 3]);
     expect(act(store, a, { type: "n.give", to: b.id, n: 5 })).toMatch(/do not have/);
   });
 });
@@ -326,7 +328,7 @@ describe("Silent Fleet: range", () => {
     const store: Store = { room: createRoom("RANGE", 3, 1000) };
     const ps = [0, 1].map(() => join(store.room, newId) as Player);
     handle(store, ps[0].id, { type: "start" }, 2000, newId);
-    expect(see(store, ps[0]).me).toMatchObject({ guns: 2, radar: 2 });
+    expect(see(store, ps[0]).me).toMatchObject({ guns: 2, radar: 2, ap: 2 }); // and two action points
 
     const { store: s, t, a, b } = fresh(); // a lies on column 4, rows 8 to 10
     expect(act(s, a, { type: "n.fire", x: 7, y: 9 })).toMatch(/out of range. Your guns reach 2 squares. Increase your range/);

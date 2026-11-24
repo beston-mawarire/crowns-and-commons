@@ -24,7 +24,7 @@ A ship lies either upright or sideways and has a bow, shown by an arrow.
 
 ## Action points
 
-Everyone starts with 3. Every 30 seconds (a "turn") every ship afloat gets 2 more, up to 10.
+Everyone starts with 2. Every 30 seconds (a "turn") every ship afloat gets 2 more, up to 10.
 They can be spent at any moment, in any order.
 
 | Action | Cost | What it does |
