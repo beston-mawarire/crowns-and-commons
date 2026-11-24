@@ -4,6 +4,7 @@
 
 let api = null; // helpers lent by app.js
 let built = false;
+let wired = false; // the click listener is in place
 const T = () => api.st().trade;
 const el = (id) => document.getElementById(id);
 const name = (id) => api.st().players.find((p) => p.id === id)?.name ?? "?";
@@ -203,6 +204,10 @@ function build() {
     e.target.value = "";
   };
   // One listener for every button that is redrawn.
+  // These panels outlive a single game, so the listener is attached once only: a second copy
+  // would send every tap twice.
+  if (wired) return;
+  wired = true;
   for (const id of ["tradeboard", "right"])
     el(id).addEventListener("click", (e) => {
       const b = e.target.closest("[data-t]");

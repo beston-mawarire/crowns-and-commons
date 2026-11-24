@@ -3,6 +3,7 @@
 
 let api = null; // helpers lent by app.js
 let built = false;
+let wired = false; // the click listener is in place
 let target = null; // the square the guns are aimed at
 const N = () => api.st().naval;
 const el = (id) => document.getElementById(id);
@@ -95,6 +96,10 @@ function build() {
     e.target.value = "";
   };
   // One listener for everything that is redrawn.
+  // These panels outlive a single game, so the listener is attached once only: a second copy
+  // would send every tap twice.
+  if (wired) return;
+  wired = true;
   for (const id of ["navalboard", "right"])
     el(id).addEventListener("click", (e) => {
       const cell = e.target.closest("[data-x]");
