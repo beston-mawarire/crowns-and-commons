@@ -91,6 +91,8 @@ export interface Ship {
   hull: number;
   ap: number;
   alive: boolean;
+  /** Which parts of the ship have been hit: 0 is the stern, 1 the middle, 2 the bow. The damage travels with the ship. */
+  damaged?: number[];
   /** How far this ship's guns and radar reach now. */
   guns: number;
   radar: number;
@@ -363,6 +365,8 @@ export function navalHandle(t: NavalState, players: Who[], me: string, msg: any,
         const other = t.ships[target];
         ship.hits++;
         other.hull--;
+        const part = cellsOf(other).findIndex(([cx, cy]) => cx === x && cy === y);
+        other.damaged = [...new Set([...(other.damaged ?? []), part])];
         ship.marks.push({ x, y, kind: "hit", turn: t.turn });
         say(t, now, `You fire at ${coord(x, y)}: a hit!`, me, "good");
         if (other.hull <= 0) sink(t, target, me, now, name);
@@ -457,11 +461,11 @@ export function navalView(t: NavalState, me: string, now: number) {
     /** When the storm next moves in, if it will. */
     stormNext: t.stormOn === false || t.over || t.storm >= Math.floor((t.size - NAVAL.stormMinSafe) / 2) ? null : t.turn < NAVAL.stormStart ? NAVAL.stormStart : t.turn + NAVAL.stormEvery - ((t.turn - NAVAL.stormStart) % NAVAL.stormEvery),
     rules: NAVAL,
-    me: mine ? { x: mine.x, y: mine.y, dir: mine.dir, hull: mine.hull, ap: mine.ap, alive: mine.alive, guns: mine.guns, radar: mine.radar, cells: cellsOf(mine), marks: mine.marks, sightings: Object.entries(mine.sightings).map(([id, s]) => ({ id, ...s })) } : null,
+    me: mine ? { x: mine.x, y: mine.y, dir: mine.dir, hull: mine.hull, ap: mine.ap, alive: mine.alive, damaged: mine.damaged ?? [], guns: mine.guns, radar: mine.radar, cells: cellsOf(mine), marks: mine.marks, sightings: Object.entries(mine.sightings).map(([id, s]) => ({ id, ...s })) } : null,
     ships: Object.entries(t.ships).map(([id, s]) => {
       const friend = id !== me && allied(t, me, id);
       const open = all || friend;
-      return { id, alive: s.alive, ally: friend, place: s.alive ? null : s.place, sunkBy: s.sunkBy, cells: s.alive && open && id !== me ? cellsOf(s) : null, dir: open ? s.dir : null, hull: open ? s.hull : null };
+      return { id, alive: s.alive, ally: friend, place: s.alive ? null : s.place, sunkBy: s.sunkBy, cells: s.alive && open && id !== me ? cellsOf(s) : null, dir: open ? s.dir : null, hull: open ? s.hull : null, damaged: open ? (s.damaged ?? []) : null };
     }),
     alliances: t.alliances.filter((x) => x.a === me || x.b === me).map((x) => ({ with: x.a === me ? x.b : x.a, until: x.until })),
     proposals: t.proposals.filter((p) => p.from === me || p.to === me),

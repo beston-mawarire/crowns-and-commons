@@ -5,6 +5,8 @@ let api = null; // helpers lent by app.js
 let built = false;
 let wired = false; // the click listener is in place
 let target = null; // the square the guns are aimed at
+let lastHull = null; // to notice the moment the ship is hit
+let flashTimer = null;
 const N = () => api.st().naval;
 const el = (id) => document.getElementById(id);
 const player = (id) => api.st().players.find((p) => p.id === id);
@@ -47,6 +49,7 @@ const canAct = () => built && api && N() && !N().over && N().me?.alive;
 function build() {
   built = true;
   target = null;
+  lastHull = N().me?.hull ?? null; // nothing flashes for damage taken before the page was opened
   for (const k of Object.keys(drawn)) delete drawn[k];
   const st = api.st();
   const r = N().rules;
@@ -69,7 +72,7 @@ function build() {
   el("navalboard").innerHTML = `
     <div id="n-banner"></div>
     <div id="n-status"></div>
-    <div class="n-mapwrap"><div id="n-map" class="n-map" style="--n:${N().size}"></div></div>
+    <div class="n-mapbox"><div class="n-mapwrap"><div id="n-map" class="n-map" style="--n:${N().size}"></div></div><div id="n-flash" hidden></div></div>
     <div id="n-controls"></div>
     <div id="n-legend" class="n-legend"></div>
     <div id="n-result"></div>`;
@@ -157,6 +160,13 @@ function update() {
   const allyOf = Object.fromEntries(t.alliances.map((a) => [a.with, a.until]));
   if (target && (!alive || reach(target.x, target.y) > me.guns)) target = null;
 
+  // ---- the moment of being hit: a red shout over the map, gone after two seconds
+  if (me && lastHull !== null && me.hull < lastHull) {
+    const why = t.news.filter((n) => n.to === meId || n.kind === "sunk").at(-1)?.text ?? "";
+    shout(!me.alive ? "You've been sunk!" : /storm/i.test(why) ? "The storm has damaged you!" : "You've been hit!");
+  }
+  if (me) lastHull = me.hull;
+
   // ---- fleets
   setHTML(
     "n-fleets",
@@ -202,10 +212,10 @@ function update() {
     const age = t.turn - s.turn;
     s.cells.forEach(([x, y], i) => put(x, y, { cls: "ghost", bg: color(s.id), text: i === Math.floor((s.cells.length - 1) / 2) ? flag(s.id) : "", title: `${nation(s.id)}, seen by radar ${age ? plural(age, "turn") + " ago" : "this turn"}` }));
   }
-  for (const s of t.ships) if (s.cells) s.cells.forEach(([x, y], i) => put(x, y, { cls: "ship", bg: color(s.id), text: i === 1 ? flag(s.id) : i === 2 && s.dir !== null ? ARROW[s.dir] : "", title: `${nation(s.id)}${s.ally ? " (your ally)" : ""}` }));
+  for (const s of t.ships) if (s.cells) s.cells.forEach(([x, y], i) => put(x, y, { cls: "ship" + (s.damaged?.includes(i) ? " dmg" : ""), bg: color(s.id), text: i === 1 ? flag(s.id) : i === 2 && s.dir !== null ? ARROW[s.dir] : "", title: `${nation(s.id)}${s.ally ? " (your ally)" : ""}` }));
   for (const row of t.result?.rows ?? []) if (row.place > 1) row.cells.forEach(([x, y], i) => put(x, y, { cls: "wreck", bg: color(row.id), text: i === 1 ? flag(row.id) : "", title: `${nation(row.id)} went down here` }));
   for (const row of t.result?.rows ?? []) if (row.place === 1 && row.id !== meId) row.cells.forEach(([x, y], i) => put(x, y, { cls: "ship", bg: color(row.id), text: i === 1 ? flag(row.id) : "", title: nation(row.id) }));
-  if (me && (me.alive || t.over)) me.cells.forEach(([x, y], i) => put(x, y, { cls: me.alive ? "ship mine" : "wreck", bg: color(meId), text: i === 2 && me.alive ? ARROW[me.dir] : i === 1 ? flag(meId) : "", title: "Your ship" }));
+  if (me && (me.alive || t.over)) me.cells.forEach(([x, y], i) => put(x, y, { cls: (me.alive ? "ship mine" : "wreck") + (me.alive && me.damaged.includes(i) ? " dmg" : ""), bg: color(meId), text: i === 2 && me.alive ? ARROW[me.dir] : i === 1 ? flag(meId) : "", title: me.damaged.includes(i) ? "Your ship: this part has been hit" : "Your ship" }));
   for (const m of me?.marks ?? []) put(m.x, m.y, { mark: m.kind, title: { hit: "You hit a ship here", miss: "Your shot missed here", splash: "A shell landed here" }[m.kind] });
 
   const box = me ? { x0: Math.min(...me.cells.map((c) => c[0])), x1: Math.max(...me.cells.map((c) => c[0])), y0: Math.min(...me.cells.map((c) => c[1])), y1: Math.max(...me.cells.map((c) => c[1])) } : null;
@@ -244,7 +254,7 @@ function update() {
   setHTML(
     "n-legend",
     alive
-      ? `<span><i class="k g"></i>guns reach here (${me.guns})</span><span><i class="k rr"></i>radar sees inside this line (${me.radar})</span><span><i class="k ghost"></i>seen by radar (may have moved, and may be only part of the ship)</span><span><b>✕</b> your hit</span><span><b>•</b> your miss</span><span><b>≈</b> a shell landed</span>${t.storm ? `<span><i class="k storm"></i>storm</span>` : ""}`
+      ? `<span><i class="k g"></i>guns reach here (${me.guns})</span><span><i class="k rr"></i>radar sees inside this line (${me.radar})</span><span><i class="k ghost"></i>seen by radar (may have moved, and may be only part of the ship)</span><span><i class="k dmg"></i>part of your ship that was hit</span><span><b>✕</b> your hit</span><span><b>•</b> your miss</span><span><b>≈</b> a shell landed</span>${t.storm ? `<span><i class="k storm"></i>storm</span>` : ""}`
       : "",
   );
 
@@ -295,6 +305,19 @@ function update() {
     setHTML("n-host", "");
   }
   tickNaval();
+}
+
+/** A short message over the top right of the map. */
+function shout(text) {
+  const node = el("n-flash");
+  if (!node) return;
+  node.textContent = text;
+  node.hidden = false;
+  node.classList.remove("go");
+  void node.offsetWidth; // restart the fade
+  node.classList.add("go");
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => (node.hidden = true), 2700);
 }
 
 /** Called several times a second: the countdown to the next action points. */

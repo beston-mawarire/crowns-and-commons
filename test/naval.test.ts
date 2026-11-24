@@ -128,6 +128,10 @@ describe("Silent Fleet: radar and guns", () => {
     expect(act(store, a, { type: "n.fire", x: 8, y: 9 })).toBeNull();
     expect(last(store, a)).toMatch(/a hit!/);
     expect(last(store, b)).toMatch(/You have been hit! The shot came from the west. 2 more hits/);
+    expect(see(store, b).me!.damaged).toEqual([1]); // the middle of the ship, and it stays marked when the ship moves
+    act(store, b, { type: "n.move", dir: 1 });
+    expect(see(store, b).me).toMatchObject({ damaged: [1], y: 8 });
+    act(store, b, { type: "n.move", dir: -1 });
     expect(see(store, a).me!.marks.map((m) => m.kind)).toEqual(["miss", "hit"]);
     expect(see(store, a).ships.find((s) => s.id === b.id)!.cells).toBeNull(); // a hit does not show the ship
     act(store, a, { type: "n.fire", x: 8, y: 9 });

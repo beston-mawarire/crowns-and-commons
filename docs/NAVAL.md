@@ -47,7 +47,8 @@ They can be spent at any moment, in any order.
   (allies are not warned).
 - **Fire** is blind: pick any square in range. You are told whether you hit. A ship that is
   hit is told roughly which direction the shot came from. If you miss, any ship within 2
-  squares of the splash sees it land. **Three hits sink a ship**, wherever they land on it.
+  squares of the splash sees it land. **Three hits sink a ship**, wherever they land on it. The part of
+  your ship that was hit turns a darker shade, and "You've been hit!" flashes over the map.
 - Sinking a ship earns 3 action points.
 - You cannot sail off the map. Sailing or turning into another ship fails, costs the points,
   and tells both captains that someone is right beside them.
