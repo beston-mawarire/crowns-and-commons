@@ -55,7 +55,7 @@ function build() {
   el("left").innerHTML = `<h3>The fleets</h3><div id="n-fleets"></div>
     <h3>How it works</h3>
     <ul class="t-how">
-      <li>You see only your own ship. <b>Radar</b> shows ships inside the blue line, and warns them.</li>
+      <li>You see only your own ship. <b>Radar</b> shows the parts of ships inside the blue line, and warns them.</li>
       <li><b>Sail</b> forwards or backwards along your ship. <b>Turn</b> to switch between upright and sideways.</li>
       <li><b>Fire</b> at any square in the red area. ${r.hull} hits sink a ship.</li>
       <li>Both start at ${r.rangeStart} squares. <b>Increase range</b> to reach further (guns up to ${r.fireRange}, radar up to ${r.radarRange}).</li>
@@ -195,7 +195,7 @@ function update() {
   const put = (x, y, o) => (grid[x + "," + y] = { ...(grid[x + "," + y] ?? {}), ...o });
   for (const s of me?.sightings ?? []) {
     const age = t.turn - s.turn;
-    s.cells.forEach(([x, y], i) => put(x, y, { cls: "ghost", bg: color(s.id), text: i === 1 ? flag(s.id) : "", title: `${nation(s.id)}, seen by radar ${age ? plural(age, "turn") + " ago" : "this turn"}` }));
+    s.cells.forEach(([x, y], i) => put(x, y, { cls: "ghost", bg: color(s.id), text: i === Math.floor((s.cells.length - 1) / 2) ? flag(s.id) : "", title: `${nation(s.id)}, seen by radar ${age ? plural(age, "turn") + " ago" : "this turn"}` }));
   }
   for (const s of t.ships) if (s.cells) s.cells.forEach(([x, y], i) => put(x, y, { cls: "ship", bg: color(s.id), text: i === 1 ? flag(s.id) : i === 2 && s.dir !== null ? ARROW[s.dir] : "", title: `${nation(s.id)}${s.ally ? " (your ally)" : ""}` }));
   for (const row of t.result?.rows ?? []) if (row.place > 1) row.cells.forEach(([x, y], i) => put(x, y, { cls: "wreck", bg: color(row.id), text: i === 1 ? flag(row.id) : "", title: `${nation(row.id)} went down here` }));
@@ -239,7 +239,7 @@ function update() {
   setHTML(
     "n-legend",
     alive
-      ? `<span><i class="k g"></i>guns reach here (${me.guns})</span><span><i class="k rr"></i>radar sees inside this line (${me.radar})</span><span><i class="k ghost"></i>seen by radar (may have moved)</span><span><b>✕</b> your hit</span><span><b>•</b> your miss</span><span><b>≈</b> a shell landed</span>${t.storm ? `<span><i class="k storm"></i>storm</span>` : ""}`
+      ? `<span><i class="k g"></i>guns reach here (${me.guns})</span><span><i class="k rr"></i>radar sees inside this line (${me.radar})</span><span><i class="k ghost"></i>seen by radar (may have moved, and may be only part of the ship)</span><span><b>✕</b> your hit</span><span><b>•</b> your miss</span><span><b>≈</b> a shell landed</span>${t.storm ? `<span><i class="k storm"></i>storm</span>` : ""}`
       : "",
   );
 

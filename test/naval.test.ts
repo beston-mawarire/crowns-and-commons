@@ -131,7 +131,7 @@ describe("Silent Fleet: radar and guns", () => {
     expect(see(store, a).me!.marks.map((m) => m.kind)).toEqual(["miss", "hit"]);
     expect(see(store, a).ships.find((s) => s.id === b.id)!.cells).toBeNull(); // a hit does not show the ship
     act(store, a, { type: "n.fire", x: 8, y: 9 });
-    t.ships[a.id].ap = 2;
+    t.ships[a.id].ap = NAVAL.cost.fire;
     act(store, a, { type: "n.fire", x: 8, y: 10 });
     expect(t.ships[b.id]).toMatchObject({ alive: false, sunkBy: a.id, place: 3 });
     expect(t.ships[a.id].ap).toBe(NAVAL.sinkBonus);
@@ -141,8 +141,11 @@ describe("Silent Fleet: radar and guns", () => {
   });
 
   it("lets a ship near a miss see the shell land", () => {
-    const { store, a, b, c } = battle();
+    const { store, t, a, b, c } = battle();
+    t.ships[a.id].ap = NAVAL.cost.fire;
     act(store, a, { type: "n.fire", x: 7, y: 7 }); // one square from b's bow
+    expect(t.ships[a.id].ap).toBe(0);
+    expect(act(store, a, { type: "n.fire", x: 7, y: 7 })).toMatch(/costs 3 action points/);
     expect(last(store, b)).toMatch(/shell lands in the water at H8/);
     expect(see(store, b).me!.marks).toEqual([{ x: 7, y: 7, kind: "splash", turn: 0 }]);
     expect(see(store, c).me!.marks).toHaveLength(0);
@@ -187,6 +190,7 @@ describe("Silent Fleet: alliances", () => {
     act(store, b, { type: "n.move", dir: 1 });
     expect(see(store, a).ships.find((s) => s.id === b.id)!.cells![1]).toEqual([8, 8]);
     expect(see(store, a).alliances).toEqual([{ with: b.id, until: 4 }]);
+    store.room.naval!.ships[a.id].ap = 5;
     expect(act(store, a, { type: "n.fire", x: 8, y: 8 })).toBeNull();
     expect(see(store, b).me!.hull).toBe(2);
     expect(see(store, a).alliances).toHaveLength(1); // the alliance itself still stands
@@ -204,6 +208,7 @@ describe("Silent Fleet: alliances", () => {
 
   it("can be broken at any moment, and then the guns are free", () => {
     const { store, t, a, b } = allies(10);
+    t.ships[a.id].ap = 5;
     expect(act(store, a, { type: "n.break", with: b.id })).toBeNull();
     expect(last(store, b)).toMatch(/has broken the alliance with you/);
     expect(see(store, b).ships.find((s) => s.id === a.id)!.cells).toBeNull();
@@ -235,6 +240,7 @@ describe("Silent Fleet: the end", () => {
   it("is won by the last ship afloat, and then shows everything", () => {
     const { store, t, a, b } = battle(2);
     t.ships[b.id].hull = 1;
+    t.ships[a.id].ap = NAVAL.cost.fire;
     act(store, a, { type: "n.fire", x: 8, y: 9 });
     expect(store.room.phase).toBe("final");
     const v = see(store, b);
@@ -357,5 +363,23 @@ describe("Silent Fleet: range", () => {
     t.ships[a.id].ap = 2;
     t.ships[a.id].guns = 2;
     expect(act(store, a, { type: "n.range" })).toMatch(/costs 3 action points/);
+  });
+});
+
+describe("Silent Fleet: partial radar", () => {
+  it("shows only the squares of a ship that lie inside radar range", () => {
+    const { store, t, a, b } = battle();
+    Object.assign(t.ships[a.id], { radar: 2, ap: 10 }); // a lies on column 4, rows 8 to 10
+    Object.assign(t.ships[b.id], { x: 7, y: 9, dir: 1 }); // b lies along row 9, columns 6 to 8
+    act(store, a, { type: "n.ping" });
+    expect(see(store, a).me!.sightings).toEqual([{ id: b.id, cells: [[6, 9]], turn: 0 }]); // just its stern
+    expect(last(store, b)).toMatch(/swept your position/); // b is still warned
+    t.ships[a.id].radar = 3;
+    act(store, a, { type: "n.ping" });
+    expect(see(store, a).me!.sightings[0].cells).toEqual([[6, 9], [7, 9]]);
+    t.ships[a.id].radar = 4;
+    act(store, a, { type: "n.ping" });
+    expect(see(store, a).me!.sightings[0].cells).toHaveLength(3);
+    expect(JSON.stringify(see(store, a).ships)).not.toContain("[8,9]"); // nothing else gives the rest away
   });
 });

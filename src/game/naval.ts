@@ -46,7 +46,7 @@ export const NAVAL = {
   apStart: 2,
   apPerTurn: 2,
   apMax: 10,
-  cost: { move: 1, turn: 1, ping: 2, fire: 2, range: 3 },
+  cost: { move: 1, turn: 1, ping: 2, fire: 3, range: 3 },
   /** A ship sinks after this many hits. */
   hull: 3,
   /**
@@ -94,7 +94,7 @@ export interface Ship {
   /** How far this ship's guns and radar reach now. */
   guns: number;
   radar: number;
-  /** Ships found by radar: where they were, and on which turn. */
+  /** Ships found by radar: the squares of them that were in range, and on which turn. */
   sightings: Record<string, { cells: number[][]; turn: number }>;
   /** Squares worth remembering: your hits and misses, and shells seen landing nearby. */
   marks: { x: number; y: number; kind: "hit" | "miss" | "splash"; turn: number }[];
@@ -327,8 +327,10 @@ export function navalHandle(t: NavalState, players: Who[], me: string, msg: any,
       for (const id of others) {
         const other = t.ships[id];
         const cells = cellsOf(other);
-        if (!cells.some(([x, y]) => reach(mine, x, y) <= ship.radar)) continue;
-        ship.sightings[id] = { cells, turn: t.turn };
+        // Radar shows only the squares of a ship that lie inside its range, not the whole ship.
+        const seen = cells.filter(([x, y]) => reach(mine, x, y) <= ship.radar);
+        if (!seen.length) continue;
+        ship.sightings[id] = { cells: seen, turn: t.turn };
         found.push(id);
         if (!allied(t, me, id)) say(t, now, `Radar! Someone has just swept your position from the ${bearing(other, ship)}. They know where you are.`, id, "bad");
       }

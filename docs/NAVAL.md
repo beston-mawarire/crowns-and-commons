@@ -31,8 +31,8 @@ They can be spent at any moment, in any order.
 | --- | --- | --- |
 | Sail forwards or backwards | 1 | Moves one square along the ship's length. |
 | Turn left or right | 1 | Swings the ship a quarter turn about its middle square, so upright becomes sideways. |
-| Radar ping | 2 | Shows every ship with any part inside your radar range. |
-| Fire | 2 | Fires at any square inside your gun range. |
+| Radar ping | 2 | Shows the squares of other ships that lie inside your radar range. |
+| Fire | 3 | Fires at any square inside your gun range. |
 | Increase range | 3 | Adds one square to both your gun range and your radar range. |
 | Send points | the points sent | Gives action points to any other ship. |
 
@@ -40,7 +40,9 @@ They can be spent at any moment, in any order.
   2 squares. Each increase adds one to both, up to 6 for guns and 5 for radar, so reaching
   full range takes four increases (12 points). On the map, guns are a faint red wash and radar
   is a blue line.
-- **Radar** shows where a ship is at that moment; the picture does not follow it, and is wiped
+- **Radar** shows only the squares of a ship that are in range, so a ship on the edge of your
+  radar appears as one or two squares and you must guess where the rest lies. It shows them as
+  they are at that moment; the picture does not follow it, and is wiped
   after 6 turns. Every ship the radar touches is told so, and from roughly which direction
   (allies are not warned).
 - **Fire** is blind: pick any square in range. You are told whether you hit. A ship that is
