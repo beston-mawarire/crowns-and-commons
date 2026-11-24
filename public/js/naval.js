@@ -11,7 +11,8 @@ const color = (id) => api.hex(player(id)?.color);
 const flag = (id) => api.country(player(id)?.country).flag;
 const nation = (id) => api.country(player(id)?.country).name || player(id)?.name || "A ship";
 const full = (id) => `${flag(id)} ${api.esc(nation(id))}`;
-const coord = (x, y) => String.fromCharCode(65 + x) + (y + 1);
+const col = (x) => (x < 26 ? "" : "A") + String.fromCharCode(65 + (x % 26));
+const coord = (x, y) => col(x) + (y + 1);
 const ARROW = ["▲", "▶", "▼", "◀"];
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -57,7 +58,7 @@ function build() {
       <li><b>Fire</b> at any square within ${r.fireRange} squares. ${r.hull} hits sink a ship.</li>
       <li>You get <b>${r.apPerTurn} action points every ${r.turnMs / 1000} seconds</b>, and can hold ${r.apMax}.</li>
       <li><b>Allies</b> see each other and cannot fire on each other.</li>
-      <li>Keep away from the edges: a <b>storm</b> closes in later.</li>
+      ${N().stormOn ? "<li>Keep away from the edges: a <b>storm</b> closes in later.</li>" : "<li>There is <b>no storm</b> in this game.</li>"}
     </ul>
     <p class="small muted">Keyboard: arrow keys to sail and turn, R for radar, F or Enter to fire.</p>`;
 
@@ -180,7 +181,7 @@ function update() {
       `<div class="n-status"><div><span class="small muted">Hull</span><div class="n-pips hull">${pips(me.hull, r.hull, "on")}</div></div>
       <div><span class="small muted">Action points</span><div class="n-ap"><b>${me.ap}</b><div class="n-pips">${pips(me.ap, r.apMax, "on")}</div></div></div>
       <div><span class="small muted">Next points</span><div><b id="n-next" class="num"></b></div></div></div>
-      ${t.storm ? `<p class="t-flag bad"><b>Storm:</b> the outer ${plural(t.storm, "row")} of the map ${t.storm === 1 ? "is" : "are"} deadly.${t.stormNext ? ` It closes in again on turn ${t.stormNext + 1}.` : ""}</p>` : t.stormNext - t.turn <= 4 ? `<p class="t-flag"><b>A storm is coming:</b> the edges of the map become deadly on turn ${t.stormNext + 1}. Move towards the middle.</p>` : ""}`,
+      ${t.storm ? `<p class="t-flag bad"><b>Storm:</b> the outer ${plural(t.storm, "row")} of the map ${t.storm === 1 ? "is" : "are"} deadly.${t.stormNext ? ` It closes in again on turn ${t.stormNext + 1}.` : ""}</p>` : t.stormNext !== null && t.stormNext - t.turn <= 4 ? `<p class="t-flag"><b>A storm is coming:</b> the edges of the map become deadly on turn ${t.stormNext + 1}. Move towards the middle.</p>` : ""}`,
     );
   } else setHTML("n-status", "");
 
@@ -198,7 +199,7 @@ function update() {
   if (me && (me.alive || t.over)) me.cells.forEach(([x, y], i) => put(x, y, { cls: me.alive ? "ship mine" : "wreck", bg: color(meId), text: i === 2 && me.alive ? ARROW[me.dir] : i === 1 ? flag(meId) : "", title: "Your ship" }));
   for (const m of me?.marks ?? []) put(m.x, m.y, { mark: m.kind, title: { hit: "You hit a ship here", miss: "Your shot missed here", splash: "A shell landed here" }[m.kind] });
 
-  let map = `<span class="h"></span>` + Array.from({ length: size }, (_, x) => `<span class="h">${String.fromCharCode(65 + x)}</span>`).join("");
+  let map = `<span class="h"></span>` + Array.from({ length: size }, (_, x) => `<span class="h">${col(x)}</span>`).join("");
   for (let y = 0; y < size; y++) {
     map += `<span class="h">${y + 1}</span>`;
     for (let x = 0; x < size; x++) {

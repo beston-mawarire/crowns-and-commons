@@ -64,6 +64,8 @@ export const NAVAL = {
   stormStart: 12,
   stormEvery: 2,
   stormMinSafe: 6,
+  /** Map sizes the host may choose instead of the automatic one. */
+  sizes: [18, 22, 26, 30],
 };
 
 /** The sea is bigger with more ships on it. */
@@ -106,7 +108,8 @@ export interface NavalState {
   nextTurn: number;
   over: boolean;
   winner: string | null;
-  /** How many rows in from each edge the storm has reached. */
+  /** Whether this game has a storm at all (the host's choice), and how many rows in from each edge it has reached. */
+  stormOn?: boolean;
   storm: number;
   ships: Record<string, Ship>;
   alliances: { a: string; b: string; until: number }[];
@@ -123,7 +126,7 @@ export const cellsOf = (s: { x: number; y: number; dir: number }): number[][] =>
   return [-1, 0, 1].map((k) => [s.x + dx * k, s.y + dy * k]);
 };
 /** A square's name, like F7. */
-export const coord = (x: number, y: number) => String.fromCharCode(65 + x) + (y + 1);
+export const coord = (x: number, y: number) => (x < 26 ? "" : "A") + String.fromCharCode(65 + (x % 26)) + (y + 1);
 const near = (cells: number[][], x: number, y: number, range: number) => cells.some(([cx, cy]) => Math.max(Math.abs(cx - x), Math.abs(cy - y)) <= range);
 const COMPASS = ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"];
 /** Roughly which way b lies from a. */
@@ -147,9 +150,9 @@ function label(players: Who[]) {
 
 // ---------------------------------------------------------------- start
 
-export function startNaval(players: Who[], seed: number, now: number): NavalState {
+export function startNaval(players: Who[], seed: number, now: number, opts: { size?: number; storm?: boolean } = {}): NavalState {
   const rng = mulberry32(seed);
-  const size = gridSize(players.length);
+  const size = opts.size && NAVAL.sizes.includes(opts.size) ? opts.size : gridSize(players.length);
   const t: NavalState = {
     size,
     seed,
@@ -158,6 +161,7 @@ export function startNaval(players: Who[], seed: number, now: number): NavalStat
     nextTurn: now + NAVAL.turnMs,
     over: false,
     winner: null,
+    stormOn: opts.storm !== false,
     storm: 0,
     ships: {},
     alliances: [],
@@ -240,9 +244,10 @@ export function navalTick(t: NavalState, players: Who[], now: number) {
     }
 
     // The storm, which makes sure every game ends.
-    if (t.turn === NAVAL.stormStart - 2) say(t, at, "A storm is gathering around the edges of the map. In two turns the outermost squares become deadly. Head for the middle.", null, "storm");
+    const stormy = t.stormOn !== false;
+    if (stormy && t.turn === NAVAL.stormStart - 2) say(t, at, "A storm is gathering around the edges of the map. In two turns the outermost squares become deadly. Head for the middle.", null, "storm");
     const maxRing = Math.floor((t.size - NAVAL.stormMinSafe) / 2);
-    const ring = t.turn < NAVAL.stormStart ? 0 : Math.min(maxRing, Math.floor((t.turn - NAVAL.stormStart) / NAVAL.stormEvery) + 1);
+    const ring = !stormy || t.turn < NAVAL.stormStart ? 0 : Math.min(maxRing, Math.floor((t.turn - NAVAL.stormStart) / NAVAL.stormEvery) + 1);
     if (ring > t.storm) {
       t.storm = ring;
       say(t, at, `The storm closes in. The outer ${ring === 1 ? "row of squares is" : `${ring} rows of squares are`} now deadly.`, null, "storm");
@@ -427,8 +432,9 @@ export function navalView(t: NavalState, me: string, now: number) {
     over: t.over,
     winner: t.winner,
     storm: t.storm,
+    stormOn: t.stormOn !== false,
     /** When the storm next moves in, if it will. */
-    stormNext: t.over || t.storm >= Math.floor((t.size - NAVAL.stormMinSafe) / 2) ? null : t.turn < NAVAL.stormStart ? NAVAL.stormStart : t.turn + NAVAL.stormEvery - ((t.turn - NAVAL.stormStart) % NAVAL.stormEvery),
+    stormNext: t.stormOn === false || t.over || t.storm >= Math.floor((t.size - NAVAL.stormMinSafe) / 2) ? null : t.turn < NAVAL.stormStart ? NAVAL.stormStart : t.turn + NAVAL.stormEvery - ((t.turn - NAVAL.stormStart) % NAVAL.stormEvery),
     rules: NAVAL,
     me: mine ? { x: mine.x, y: mine.y, dir: mine.dir, hull: mine.hull, ap: mine.ap, alive: mine.alive, cells: cellsOf(mine), marks: mine.marks, sightings: Object.entries(mine.sightings).map(([id, s]) => ({ id, ...s })) } : null,
     ships: Object.entries(t.ships).map(([id, s]) => {

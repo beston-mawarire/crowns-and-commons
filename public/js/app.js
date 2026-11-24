@@ -365,7 +365,13 @@ function startButton(host, ready, need) {
 function navalLobby(host) {
   const st = S.st;
   const r = S.info.navalRules;
+  const auto = st.players.length <= 3 ? 18 : st.players.length <= 5 ? 22 : 26;
+  const size = st.settings.navalSize || 0;
+  const storm = st.settings.navalStorm !== false;
   return `
+    <h3>Game settings</h3>
+    <div class="field"><label for="nsize">Size of the map</label><select id="nsize" ${host ? "" : "disabled"}><option value="0" ${size ? "" : "selected"}>Automatic: ${auto} by ${auto} for ${st.players.length} ${st.players.length === 1 ? "player" : "players"}</option>${r.sizes.map((v) => `<option value="${v}" ${v === size ? "selected" : ""}>${v} by ${v}</option>`).join("")}</select></div>
+    <div class="field"><label for="nstorm">The storm</label><select id="nstorm" ${host ? "" : "disabled"}><option value="1" ${storm ? "selected" : ""}>On: the edges close in from turn ${r.stormStart}</option><option value="0" ${storm ? "" : "selected"}>Off: the game lasts until one ship is left</option></select></div>
     ${startButton(host, st.players.length >= r.minPlayers, r.minPlayers)}
     <h3>How to play</h3>
     <ol class="plain-list">
@@ -375,7 +381,7 @@ function navalLobby(host) {
       <li><b>Radar</b> (${r.cost.ping} points) shows every ship within ${r.radarRange} squares, as it is at that moment. Those ships are told someone has seen them.</li>
       <li><b>Fire</b> (${r.cost.fire} points) at any square within ${r.fireRange} squares. You are told if you hit. ${r.hull} hits sink a ship.</li>
       <li><b>Alliances:</b> two captains can agree to be allies for a number of turns. Allies see each other's ships and cannot fire on each other. Either can break it at any time.</li>
-      <li>After a while a storm closes in from the edges, so stay away from them.</li>
+      ${storm ? "<li>After a while a storm closes in from the edges, so stay away from them.</li>" : ""}
       <li>The last ship afloat wins.</li>
     </ol>`;
 }
@@ -413,6 +419,8 @@ function wireRight(el) {
   const on = (id, fn) => el.querySelector(id) && (el.querySelector(id).onchange = fn);
   on("#topen", (e) => send({ type: "settings", tradeOpen: e.target.value === "1" }));
   on("#tret", (e) => send({ type: "settings", tradeAutoReturn: e.target.value === "1" }));
+  on("#nsize", (e) => send({ type: "settings", navalSize: Number(e.target.value) }));
+  on("#nstorm", (e) => send({ type: "settings", navalStorm: e.target.value === "1" }));
   on("#tlen", (e) => send({ type: "settings", tradeSec: Number(e.target.value) }));
   if (el.querySelector("#start")) el.querySelector("#start").onclick = () => send({ type: "start" });
 }

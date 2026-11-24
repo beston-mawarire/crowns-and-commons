@@ -16,6 +16,9 @@ and are spent on sailing, turning, radar and gunfire. The last ship afloat wins.
 | 4 or 5 | 22 by 22 |
 | 6 to 8 | 26 by 26 |
 
+That is the automatic size. Before the game the host can instead fix the map at 18, 22, 26
+or 30 squares a side.
+
 Ships start at random, at least three squares from any edge and well apart from each other.
 A ship lies either upright or sideways and has a bow, shown by an arrow.
 
@@ -54,6 +57,9 @@ once. Alliances are secret from everybody else. Once only two ships are left, al
 end and no more can be made.
 
 ## The storm
+
+The host can switch the storm off in the lobby; it is on unless they do. With it off, the
+game simply lasts until one ship is left.
 
 So that no game lasts for ever, a storm arrives on turn 12 (six minutes in), announced two
 turns ahead. The outermost row of squares all round the map becomes deadly, and every two

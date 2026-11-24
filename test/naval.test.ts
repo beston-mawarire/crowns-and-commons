@@ -272,3 +272,42 @@ describe("Silent Fleet: the end", () => {
     expect(see(store, c).news.every((x) => x.to === null || x.to === c.id)).toBe(true);
   });
 });
+
+describe("Silent Fleet: the host's settings", () => {
+  const room = (settings: object, players = 3) => {
+    const store: Store = { room: createRoom("SET01", 9, 1000) };
+    const ps = Array.from({ length: players }, () => join(store.room, newId) as Player);
+    expect(handle(store, ps[1].id, { type: "settings", ...settings }, 1500, newId)).toMatch(/Only the host/);
+    expect(handle(store, ps[0].id, { type: "settings", ...settings }, 1500, newId)).toBeNull();
+    handle(store, ps[0].id, { type: "start" }, 2000, newId);
+    return { store, ps, t: store.room.naval! };
+  };
+
+  it("keeps the storm and the automatic map size unless the host changes them", () => {
+    const { t, store, ps } = room({});
+    expect(t).toMatchObject({ size: 18, stormOn: true });
+    expect(see(store, ps[0])).toMatchObject({ stormOn: true, stormNext: NAVAL.stormStart });
+  });
+
+  it("lets the host choose the size of the map", () => {
+    expect(room({ navalSize: 30 }).t.size).toBe(30);
+    expect(room({ navalSize: 26 }, 2).t.size).toBe(26);
+    expect(room({ navalSize: 17 }).t.size).toBe(18); // not one of the choices: ignored
+    const back = room({ navalSize: 0 }, 5);
+    expect(back.t.size).toBe(22);
+    expect(coord(27, 0)).toBe("AB1");
+    const big = room({ navalSize: 30 }, 8).t;
+    for (const s of Object.values(big.ships)) for (const [x, y] of cellsOf(s)) expect(x >= 0 && y >= 0 && x < 30 && y < 30).toBe(true);
+  });
+
+  it("lets the host switch the storm off, so the edges stay safe for the whole game", () => {
+    const { store, ps, t } = room({ navalStorm: false });
+    Object.assign(t.ships[ps[0].id], { x: 0, y: 5, dir: 0 });
+    runTo(store, turns(NAVAL.stormStart + 20));
+    expect(t.storm).toBe(0);
+    expect(t.ships[ps[0].id].hull).toBe(NAVAL.hull);
+    expect(t.news.some((x) => /storm/i.test(x.text))).toBe(false);
+    expect(see(store, ps[0], turns(40))).toMatchObject({ stormOn: false, stormNext: null, over: false });
+    expect(store.room.phase).toBe("battle");
+  });
+});

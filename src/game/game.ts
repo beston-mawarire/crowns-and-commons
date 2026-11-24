@@ -28,7 +28,7 @@ export interface Room {
   match: number;
   phase: Phase;
   hostId: string;
-  settings: { mode: Mode; tradeSec?: number; tradeOpen?: boolean; tradeAutoReturn?: boolean };
+  settings: { mode: Mode; tradeSec?: number; tradeOpen?: boolean; tradeAutoReturn?: boolean; /** Silent Fleet: storm on or off, and the map size (0 means it follows the number of players). */ navalStorm?: boolean; navalSize?: number };
   trade?: TradeState | null;
   naval?: NavalState | null;
   players: Player[];
@@ -125,6 +125,8 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
       if (TRADE.lengths.includes(msg.tradeSec)) room.settings.tradeSec = msg.tradeSec;
       if (typeof msg.tradeOpen === "boolean") room.settings.tradeOpen = msg.tradeOpen;
       if (typeof msg.tradeAutoReturn === "boolean") room.settings.tradeAutoReturn = msg.tradeAutoReturn;
+      if (typeof msg.navalStorm === "boolean") room.settings.navalStorm = msg.navalStorm;
+      if (msg.navalSize === 0 || NAVAL.sizes.includes(msg.navalSize)) room.settings.navalSize = msg.navalSize;
       return null;
     }
     case "remove": {
@@ -149,7 +151,7 @@ export function handle(store: Store, playerId: string, msg: any, now: number, ne
       }
       if (room.players.length < NAVAL.minPlayers) return "Silent Fleet needs at least two players. Send a friend the link.";
       room.match++;
-      room.naval = startNaval(room.players, seed, now);
+      room.naval = startNaval(room.players, seed, now, { size: room.settings.navalSize || undefined, storm: room.settings.navalStorm ?? true });
       room.phase = "battle";
       return null;
     }
