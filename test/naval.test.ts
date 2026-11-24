@@ -176,10 +176,10 @@ describe("Silent Fleet: action points", () => {
 });
 
 describe("Silent Fleet: alliances", () => {
-  const allies = (turnsLong = 4) => {
+  const allies = () => {
     const made = battle();
     const { store, t, a, b } = made;
-    expect(act(store, a, { type: "n.propose", to: b.id, turns: turnsLong })).toBeNull();
+    expect(act(store, a, { type: "n.propose", to: b.id })).toBeNull();
     expect(see(store, b).proposals).toHaveLength(1);
     expect(act(store, b, { type: "n.accept", id: t.proposals[0].id })).toBeNull();
     return made;
@@ -193,25 +193,24 @@ describe("Silent Fleet: alliances", () => {
     expect(see(store, c).alliances).toHaveLength(0);
     act(store, b, { type: "n.move", dir: 1 });
     expect(see(store, a).ships.find((s) => s.id === b.id)!.cells![1]).toEqual([8, 8]);
-    expect(see(store, a).alliances).toEqual([{ with: b.id, until: 4 }]);
+    expect(see(store, a).alliances).toEqual([{ with: b.id }]);
     store.room.naval!.ships[a.id].ap = 5;
     expect(act(store, a, { type: "n.fire", x: 8, y: 8 })).toBeNull();
     expect(see(store, b).me!.hull).toBe(2);
     expect(see(store, a).alliances).toHaveLength(1); // the alliance itself still stands
   });
 
-  it("ends after the agreed number of turns", () => {
-    const { store, t, a, b } = allies(2);
-    runTo(store, turns(1));
+  it("has no time limit: it lasts until someone breaks it", () => {
+    const { store, t, a, b } = allies();
+    t.stormOn = false; // so that the game is still going long afterwards
+    runTo(store, turns(40));
     expect(t.alliances).toHaveLength(1);
-    runTo(store, turns(2));
-    expect(t.alliances).toHaveLength(0);
-    expect(see(store, a, turns(2) + 1).ships.find((s) => s.id === b.id)!.cells).toBeNull();
-    expect(see(store, b, turns(2) + 1).news.some((x) => /has run out/.test(x.text))).toBe(true);
+    expect(see(store, a, turns(40) + 1).ships.find((s) => s.id === b.id)!.cells).not.toBeNull();
+    expect(t.news.some((x) => /run out/.test(x.text))).toBe(false);
   });
 
   it("can be broken at any moment, and then the guns are free", () => {
-    const { store, t, a, b } = allies(10);
+    const { store, t, a, b } = allies();
     t.ships[a.id].ap = 5;
     expect(act(store, a, { type: "n.break", with: b.id })).toBeNull();
     expect(last(store, b)).toMatch(/has broken the alliance with you/);
@@ -222,11 +221,11 @@ describe("Silent Fleet: alliances", () => {
 
   it("can be turned down, and cannot exist once only two ships are left", () => {
     const { store, t, a, b, c } = battle();
-    act(store, a, { type: "n.propose", to: b.id, turns: 4 });
+    act(store, a, { type: "n.propose", to: b.id });
     act(store, b, { type: "n.decline", id: t.proposals[0].id });
     expect(t.proposals).toHaveLength(0);
     expect(last(store, a)).toMatch(/turns down your offer/);
-    act(store, a, { type: "n.propose", to: b.id, turns: 4 });
+    act(store, a, { type: "n.propose", to: b.id });
     act(store, b, { type: "n.accept", id: t.proposals[0].id });
     Object.assign(t.ships[a.id], { ap: 10 });
     t.ships[c.id].hull = 1;
@@ -236,7 +235,7 @@ describe("Silent Fleet: alliances", () => {
     expect(t.ships[c.id].alive).toBe(false);
     expect(t.alliances).toHaveLength(0);
     expect(see(store, b).news.at(-1)!.text).toMatch(/Only two ships are left/);
-    expect(act(store, a, { type: "n.propose", to: b.id, turns: 4 })).toMatch(/Only two ships/);
+    expect(act(store, a, { type: "n.propose", to: b.id })).toMatch(/Only two ships/);
   });
 });
 

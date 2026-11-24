@@ -384,3 +384,27 @@ i.sq { display: inline-block; width: 10px; height: 10px; margin-right: 6px; back
 @keyframes n-flash { 0% { opacity: 0; transform: scale(1.25); } 6% { opacity: 1; transform: scale(1); } 74% { opacity: 1; } 100% { opacity: 0; } }
 .n-map .c.ship.dmg { background-image: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)); }
 .n-legend .k.dmg { background: #5a1a15; }
+
+/* Silent Fleet: the alliance pop-up, and on phones the quick buttons and pull-up sheets */
+#n-offer { position: fixed; inset: 0; z-index: 35; background: rgba(17, 17, 17, 0.55); display: grid; place-items: center; padding: 16px; }
+.n-pop { background: var(--paper); border: 3px double var(--ink); border-top: 8px solid var(--c-deals, #6a3b8f); padding: 20px 22px; max-width: 420px; width: 100%; text-align: center; }
+.n-pop h2 { font-size: 22px; margin-bottom: 8px; }
+.n-pop-flag { font-size: 44px; line-height: 1; margin-bottom: 6px; }
+.n-pop-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.n-pop-buttons .btn:first-child { background: var(--up, #1a7a35); border-color: var(--up, #1a7a35); }
+#n-quick, .n-close, #n-backdrop { display: none; }
+.n-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; background: var(--down, #b3261e); color: #fff; font: 700 12px/18px var(--sans); }
+@media (max-width: 860px) {
+  body.naval-mode #ticker { display: none; }
+  #n-quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 10px; }
+  #n-quick:empty { display: none; }
+  #n-quick .btn { padding: 9px 4px; font-size: 14px; }
+  #n-backdrop:not([hidden]) { display: block; position: fixed; inset: 0; z-index: 24; background: rgba(17, 17, 17, 0.5); }
+  #right .t-card.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; margin: 0; max-height: 78vh; overflow-y: auto; box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.35); padding-bottom: 18px; }
+  #right .t-card.sheet[hidden] { display: none !important; }
+  .t-card.sheet .n-close { display: block; float: right; border: 0; background: none; font: 700 20px var(--sans); cursor: pointer; padding: 0 4px; margin-top: -6px; color: var(--ink); }
+}
+#toast { pointer-events: none; }
+@media (max-width: 860px) {
+  body.naval-mode #toast { bottom: auto; top: 8px; width: max-content; text-align: center; }
+}

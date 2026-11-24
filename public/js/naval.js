@@ -7,6 +7,8 @@ let wired = false; // the click listener is in place
 let target = null; // the square the guns are aimed at
 let lastHull = null; // to notice the moment the ship is hit
 let flashTimer = null;
+let seenChat = 0; // the newest message read, for the unread count
+let seenNews = 0;
 const N = () => api.st().naval;
 const el = (id) => document.getElementById(id);
 const player = (id) => api.st().players.find((p) => p.id === id);
@@ -50,6 +52,9 @@ function build() {
   built = true;
   target = null;
   lastHull = N().me?.hull ?? null; // nothing flashes for damage taken before the page was opened
+  open = null;
+  seenChat = N().chat.at(-1)?.id ?? 0;
+  seenNews = N().news.at(-1)?.id ?? 0;
   for (const k of Object.keys(drawn)) delete drawn[k];
   const st = api.st();
   const r = N().rules;
@@ -70,6 +75,9 @@ function build() {
     <p class="small muted">Keyboard: arrow keys to sail and turn, R for radar, F or Enter to fire.</p>`;
 
   el("navalboard").innerHTML = `
+    <div id="n-quick"></div>
+    <div id="n-backdrop" data-n="close" hidden></div>
+    <div id="n-offer" hidden></div>
     <div id="n-banner"></div>
     <div id="n-status"></div>
     <div class="n-mapbox"><div class="n-mapwrap"><div id="n-map" class="n-map" style="--n:${N().size}"></div></div><div id="n-flash" hidden></div></div>
@@ -78,20 +86,20 @@ function build() {
     <div id="n-result"></div>`;
 
   el("right").innerHTML = `
-    <section class="t-card c-deals"><h3>Alliances</h3><div id="n-allies"></div>
-      <div id="n-allyform"><div class="t-row n-row"><select id="n-ally-turns" aria-label="For how long">${r.allianceTurns.map((n) => `<option value="${n}" ${n === 4 ? "selected" : ""}>${n} turns</option>`).join("")}</select><select id="n-ally-to" aria-label="With whom">${pick()}</select></div>
+    <section class="t-card c-deals" id="n-sec-ally"><h3>Alliances <button class="n-close" data-n="close" aria-label="Close">✕</button></h3><div id="n-allies"></div>
+      <div id="n-allyform"><div class="field"><select id="n-ally-to" aria-label="With whom">${pick()}</select></div>
       <button class="btn ghost wide" id="n-propose">Offer an alliance</button>
-      <p class="small muted">Allies see each other's ships, and nothing more: an ally can still fire on you. Either side can break it at any time.</p></div></section>
-    <section class="t-card c-talk"><h3>Talk</h3>
+      <p class="small muted">Allies see each other's ships, and nothing more: an ally can still fire on you. It lasts until one of you breaks it.</p></div></section>
+    <section class="t-card c-talk" id="n-sec-talk"><h3>Talk <button class="n-close" data-n="close" aria-label="Close">✕</button></h3>
       <div id="n-chat" class="t-scroll"></div>
       <div class="t-say" id="n-say"><select id="n-chat-to" aria-label="Say to">${pick("Everyone")}</select><input id="n-chat-text" maxlength="200" placeholder="Say something…" aria-label="Message" /></div></section>
-    <section class="t-card c-people" id="n-givebox"><h3>Send action points</h3>
+    <section class="t-card c-people" id="n-givebox"><h3>Send action points <button class="n-close" data-n="close" aria-label="Close">✕</button></h3>
       <div class="t-row n-row"><select id="n-give-n" aria-label="How many">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}">${n}</option>`).join("")}</select><select id="n-give-to" aria-label="To whom">${pick()}</select></div>
       <button class="btn ghost wide" id="n-give">Send them</button></section>
     <section class="t-card c-news"><h3>Ship's log <span class="muted">(newest first)</span></h3><ol id="n-news" class="t-scroll tall"></ol></section>
     <div id="n-host"></div>`;
 
-  el("n-propose").onclick = () => api.send({ type: "n.propose", to: el("n-ally-to").value, turns: Number(el("n-ally-turns").value) });
+  el("n-propose").onclick = () => api.send({ type: "n.propose", to: el("n-ally-to").value });
   el("n-give").onclick = () => api.send({ type: "n.give", to: el("n-give-to").value, n: Number(el("n-give-n").value) });
   el("n-chat-text").onkeydown = (e) => {
     if (e.key !== "Enter" || !e.target.value.trim()) return;
@@ -119,8 +127,25 @@ function build() {
       if (d.n === "decline") api.send({ type: "n.decline", id: Number(d.id) });
       if (d.n === "break" && confirm(`Break your alliance with ${nation(d.id)}? They will be told at once.`)) api.send({ type: "n.break", with: d.id });
       if (d.n === "lobby") api.send({ type: "newGame" });
+      if (d.n === "sheet") sheet(d.id);
+      if (d.n === "close") sheet(null);
     });
 }
+
+/** On a phone, a section can be pulled up over the map as a sheet. */
+let open = null;
+function sheet(id) {
+  open = id;
+  for (const s of ["n-sec-ally", "n-sec-talk", "n-givebox"]) el(s)?.classList.toggle("sheet", s === id);
+  el("n-backdrop").hidden = !id;
+  if (id === "n-sec-talk") {
+    seenChat = N().chat.at(-1)?.id ?? 0;
+    const chat = el("n-chat");
+    chat.scrollTop = chat.scrollHeight;
+  }
+  update();
+}
+const phone = () => window.matchMedia("(max-width: 860px)").matches;
 
 function aim(x, y) {
   if (!canAct()) return;
@@ -157,7 +182,7 @@ function update() {
   const meId = st.you.id;
   const me = t.me;
   const alive = !!me?.alive && !t.over;
-  const allyOf = Object.fromEntries(t.alliances.map((a) => [a.with, a.until]));
+  const allyOf = Object.fromEntries(t.alliances.map((a) => [a.with, true]));
   if (target && (!alive || reach(target.x, target.y) > me.guns)) target = null;
 
   // ---- the moment of being hit: a red shout over the map, gone after two seconds
@@ -166,6 +191,35 @@ function update() {
     shout(!me.alive ? "You've been sunk!" : /storm/i.test(why) ? "The storm has damaged you!" : "You've been hit!");
   }
   if (me) lastHull = me.hull;
+
+  // ---- phones have no news bar: three quick buttons instead, and news arrives as a short pop-up
+  const unread = open === "n-sec-talk" ? 0 : t.chat.filter((c) => c.id > seenChat && c.from !== meId).length;
+  if (open === "n-sec-talk") seenChat = t.chat.at(-1)?.id ?? seenChat;
+  const offers = t.proposals.filter((p) => p.to === meId);
+  const badge = (n) => (n ? `<b class="n-badge">${n}</b>` : "");
+  setHTML(
+    "n-quick",
+    alive
+      ? `<button class="btn ghost" data-n="sheet" data-id="n-givebox">Send points</button><button class="btn ghost" data-n="sheet" data-id="n-sec-ally">Alliances${badge(offers.length)}</button><button class="btn ghost" data-n="sheet" data-id="n-sec-talk">Talk${badge(unread)}</button>`
+      : "",
+  );
+  const fresh = t.news.filter((n) => n.id > seenNews);
+  if (fresh.length) {
+    seenNews = fresh.at(-1).id;
+    const mine = fresh.filter((n) => n.to === meId || n.kind === "sunk" || n.kind === "storm").at(-1);
+    if (mine && phone() && !/^You have been hit|offers you an alliance/.test(mine.text)) api.toast(mine.text, 4500);
+  }
+
+  // ---- an offer of alliance pops up, to accept or decline on the spot
+  const offer = alive ? offers[0] : null;
+  setHTML(
+    "n-offer",
+    offer
+      ? `<div class="n-pop" role="dialog" aria-label="Alliance offer"><p class="n-pop-flag">${flag(offer.from)}</p><h2>${esc(nation(offer.from))} offers you an alliance</h2><p>From ${esc(player(offer.from)?.name)}. You would see each other's ships until one of you breaks it. You could still fire on each other.</p><div class="n-pop-buttons"><button class="btn big" data-n="accept" data-id="${offer.id}">Accept</button><button class="btn ghost big" data-n="decline" data-id="${offer.id}">Decline</button></div></div>`
+      : "",
+  );
+  el("n-offer").hidden = !offer;
+  if (!alive && open) sheet(null);
 
   // ---- fleets
   setHTML(
@@ -177,7 +231,7 @@ function update() {
           (p.id === meId ? `<span class="tag solid">you</span>` : "") +
           (allyOf[p.id] ? `<span class="tag n-allytag">ally</span>` : "") +
           (!p.connected ? `<span class="tag">away</span>` : "");
-        const status = !s ? "" : s.alive ? (t.over ? "winner" : allyOf[p.id] ? `allied for ${plural(allyOf[p.id] - t.turn, "more turn")}` : "afloat") : s.sunkBy ? `sunk by ${nation(s.sunkBy)}` : "lost in the storm";
+        const status = !s ? "" : s.alive ? (t.over ? "winner" : allyOf[p.id] ? "your ally" : "afloat") : s.sunkBy ? `sunk by ${nation(s.sunkBy)}` : "lost in the storm";
         return `<div class="party ${s && !s.alive ? "out" : ""}"><span class="swatch" style="background:${color(p.id)}"></span><span class="name"><span class="n">${full(p.id)}</span>${tags}</span><span></span><span class="meta">${esc(p.name)} · ${esc(status)}</span></div>`;
       })
       .join(""),
@@ -263,9 +317,9 @@ function update() {
   const toMe = t.proposals.filter((p) => p.to === meId);
   setHTML(
     "n-allies",
-    t.alliances.map((a) => `<div class="t-offer"><i class="dot" style="background:${color(a.with)}"></i><div><b>${full(a.with)}</b> is your ally for ${plural(a.until - t.turn, "more turn")}.</div><button class="btn ghost small" data-n="break" data-id="${a.with}">Break</button></div>`).join("") +
-      toMe.map((p) => `<div class="t-offer"><i class="dot" style="background:${color(p.from)}"></i><div><b>${full(p.from)}</b> offers you an alliance for ${p.turns} turns.</div><span class="t-buttons"><button class="btn small" data-n="accept" data-id="${p.id}">Accept</button><button class="btn ghost small" data-n="decline" data-id="${p.id}">No</button></span></div>`).join("") +
-      mineOut.map((p) => `<div class="t-offer"><i class="dot" style="background:${color(p.to)}"></i><div>You have offered <b>${full(p.to)}</b> an alliance for ${p.turns} turns.</div><button class="btn ghost small" data-n="decline" data-id="${p.id}">Withdraw</button></div>`).join("") ||
+    t.alliances.map((a) => `<div class="t-offer"><i class="dot" style="background:${color(a.with)}"></i><div><b>${full(a.with)}</b> is your ally.</div><button class="btn ghost small" data-n="break" data-id="${a.with}">Break</button></div>`).join("") +
+      toMe.map((p) => `<div class="t-offer"><i class="dot" style="background:${color(p.from)}"></i><div><b>${full(p.from)}</b> offers you an alliance.</div><span class="t-buttons"><button class="btn small" data-n="accept" data-id="${p.id}">Accept</button><button class="btn ghost small" data-n="decline" data-id="${p.id}">No</button></span></div>`).join("") +
+      mineOut.map((p) => `<div class="t-offer"><i class="dot" style="background:${color(p.to)}"></i><div>You have offered <b>${full(p.to)}</b> an alliance.</div><button class="btn ghost small" data-n="decline" data-id="${p.id}">Withdraw</button></div>`).join("") ||
       `<p class="small muted">${t.over ? "The battle is over." : "You have no allies."}</p>`,
   );
   el("n-allyform").hidden = !alive || t.ships.filter((s) => s.alive).length <= 2;

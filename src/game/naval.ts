@@ -4,7 +4,7 @@
 // points arrive every thirty seconds and are spent on sailing, turning, radar and gunfire.
 // A radar ping shows who is near, and tells them they have been seen. Shots are fired blind
 // at any square within range, and range can be bought. Alliances share positions until they
-// run out or are broken; they do not stop anyone firing. The last ship afloat wins.
+// are broken; they do not stop anyone firing. The last ship afloat wins.
 //
 // Like the trading game, this file is plain functions over a plain object, so every rule
 // can be tested without a server.
@@ -60,8 +60,6 @@ export const NAVAL = {
   splashRange: 2,
   /** Action points for sinking a ship. */
   sinkBonus: 3,
-  /** How long an alliance can be made for, in turns. */
-  allianceTurns: [2, 4, 6, 10],
   /** Radar sightings are wiped after this many turns. */
   sightingTurns: 6,
   /** The storm: from this turn the edges of the map become deadly, closing in one more row every few turns. */
@@ -121,8 +119,9 @@ export interface NavalState {
   stormOn?: boolean;
   storm: number;
   ships: Record<string, Ship>;
-  alliances: { a: string; b: string; until: number }[];
-  proposals: { id: number; from: string; to: string; turns: number }[];
+  /** An alliance lasts until one side breaks it, a ship sinks, or only two ships are left. */
+  alliances: { a: string; b: string }[];
+  proposals: { id: number; from: string; to: string }[];
   news: { id: number; t: number; text: string; to: string | null; kind?: string }[];
   chat: { id: number; t: number; from: string; to: string | null; text: string }[];
   nextId: number;
@@ -234,7 +233,7 @@ function checkEnd(t: NavalState, now: number, name: (id: string) => string) {
 
 // ---------------------------------------------------------------- the clock
 
-/** Bring the game up to date: hand out action points, end alliances, move the storm. */
+/** Bring the game up to date: hand out action points, move the storm. */
 export function navalTick(t: NavalState, players: Who[], now: number) {
   const name = label(players);
   while (!t.over && t.nextTurn <= now) {
@@ -243,11 +242,6 @@ export function navalTick(t: NavalState, players: Who[], now: number) {
     t.nextTurn += NAVAL.turnMs;
     for (const id of living(t)) t.ships[id].ap = Math.min(NAVAL.apMax, t.ships[id].ap + NAVAL.apPerTurn);
 
-    for (const x of t.alliances.filter((x) => x.until <= t.turn)) {
-      say(t, at, `Your alliance with ${name(x.b)} has run out.`, x.a, "ally");
-      say(t, at, `Your alliance with ${name(x.a)} has run out.`, x.b, "ally");
-    }
-    t.alliances = t.alliances.filter((x) => x.until > t.turn);
 
     for (const ship of Object.values(t.ships)) {
       for (const [id, s] of Object.entries(ship.sightings)) if (t.turn - s.turn >= NAVAL.sightingTurns) delete ship.sightings[id];
@@ -401,11 +395,10 @@ export function navalHandle(t: NavalState, players: Who[], me: string, msg: any,
     case "n.propose": {
       if (!others.includes(msg.to)) return "Choose a ship that is still afloat.";
       if (others.length < 2) return "Only two ships are left. There can be no alliance now.";
-      if (!NAVAL.allianceTurns.includes(msg.turns)) return "Choose how long the alliance should last.";
       if (allied(t, me, msg.to)) return `You are already allied with ${name(msg.to)}.`;
       t.proposals = t.proposals.filter((p) => !(p.from === me && p.to === msg.to));
-      t.proposals.push({ id: t.nextId++, from: me, to: msg.to, turns: msg.turns });
-      say(t, now, `${name(me)} offers you an alliance for ${msg.turns} turns.`, msg.to, "ally");
+      t.proposals.push({ id: t.nextId++, from: me, to: msg.to });
+      say(t, now, `${name(me)} offers you an alliance.`, msg.to, "ally");
       return null;
     }
     case "n.accept": {
@@ -413,8 +406,8 @@ export function navalHandle(t: NavalState, players: Who[], me: string, msg: any,
       if (!p || !t.ships[p.from]?.alive) return "That offer is no longer there.";
       t.proposals = t.proposals.filter((x) => !((x.from === p.from && x.to === me) || (x.from === me && x.to === p.from)));
       if (allied(t, me, p.from)) return null;
-      t.alliances.push({ a: p.from, b: me, until: t.turn + p.turns });
-      for (const [a, b] of [[me, p.from], [p.from, me]]) say(t, now, `You and ${name(b)} are now allies for ${p.turns} turns. You can see each other's ships. Nothing stops either of you from firing.`, a, "ally");
+      t.alliances.push({ a: p.from, b: me });
+      for (const [a, b] of [[me, p.from], [p.from, me]]) say(t, now, `You and ${name(b)} are now allies, until one of you breaks it. You can see each other's ships. Nothing stops either of you from firing.`, a, "ally");
       return null;
     }
     case "n.decline": {
@@ -467,7 +460,7 @@ export function navalView(t: NavalState, me: string, now: number) {
       const open = all || friend;
       return { id, alive: s.alive, ally: friend, place: s.alive ? null : s.place, sunkBy: s.sunkBy, cells: s.alive && open && id !== me ? cellsOf(s) : null, dir: open ? s.dir : null, hull: open ? s.hull : null, damaged: open ? (s.damaged ?? []) : null };
     }),
-    alliances: t.alliances.filter((x) => x.a === me || x.b === me).map((x) => ({ with: x.a === me ? x.b : x.a, until: x.until })),
+    alliances: t.alliances.filter((x) => x.a === me || x.b === me).map((x) => ({ with: x.a === me ? x.b : x.a })),
     proposals: t.proposals.filter((p) => p.from === me || p.to === me),
     news: t.news.filter((n) => n.to === null || n.to === me),
     chat: t.chat.filter((c) => c.to === null || c.to === me || c.from === me),

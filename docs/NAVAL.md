@@ -55,14 +55,21 @@ They can be spent at any moment, in any order.
 
 ## Alliances
 
-Any captain can offer another an alliance for 2, 4, 6 or 10 turns. If it is accepted:
+Any captain can offer another an alliance. The offer pops up on the other captain's screen,
+to accept or decline on the spot. If it is accepted, each sees the other's ship, live. That
+is all an alliance does: **allies can still fire on each other**, so it is only as good as
+the trust behind it.
 
-each sees the other's ship, live. That is all an alliance does: **allies can still fire on
-each other**, so it is only as good as the trust behind it.
+There is no time limit. An alliance lasts until either captain breaks it (the other is told
+at once), one of the two ships sinks, or only two ships are left, when all alliances end and
+no more can be made. Alliances are secret from everybody else.
 
-It ends when the turns run out, or the moment either captain breaks it; the other is told at
-once. Alliances are secret from everybody else. Once only two ships are left, all alliances
-end and no more can be made.
+## On a phone
+
+There is no news bar on a phone. In its place is a row of three buttons, **Send points**,
+**Alliances** and **Talk**, each of which pulls its section up over the map. News for you
+appears as a short pop-up at the bottom of the screen, and the full log is further down the
+page.
 
 ## The storm
 
